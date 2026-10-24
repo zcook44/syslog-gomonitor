@@ -166,11 +166,62 @@ ssh -L 8080:127.0.0.1:8080 your-user@your-syslog-server
 The page shows device names, addresses, and log paths. Keep the listener on
 loopback unless the host has its own access control.
 
+## Requirements
+
+The 1.0.0 production package is a static `linux/amd64` binary. The syslog
+server does not need Go, a C library, Python, or a web server. The install
+script does not download packages.
+
+### Build machine
+
+Needed only to create the tarball. The syslog server does not need any of these.
+
+| Requirement | Package on RHEL | Why |
+| --- | --- | --- |
+| Go 1.22 or newer | `golang` | `release/build.sh` compiles the binary. CGO is disabled, so a C compiler is not required. |
+| `file` | `file` | The build refuses a binary that is not statically linked. |
+| `sha256sum` | `coreutils` | Checksum of the tarball and of the binary inside it. |
+| `tar` and `gzip` | `tar`, `gzip` | Writes `release/syslog-gomonitor-1.0.0-linux-amd64.tar.gz`. |
+| Bash | `bash` | `release/build.sh`. |
+
+### Syslog server packages
+
+Install these from local media before running `install.sh`.
+
+| Requirement | Package on RHEL | Required for |
+| --- | --- | --- |
+| systemd | `systemd` | Installing and running `syslog-gomonitor.service`. `systemctl` and `journalctl` come from this package. |
+| Bash 4.4 or newer | `bash` | `install.sh`, including the directory prompt and the `/dev/tcp` health check. |
+| GNU coreutils | `coreutils` | `install`, `sha256sum`, `timeout`, and `id` during install. |
+| `grep` | `grep` | The install health check looks for `ok` in the HTTP response. |
+| `tar` and `gzip` | `tar`, `gzip` | Unpacking the release tarball. |
+| `ss` | `iproute` | Classifying TCP devices. The process runs `ss -H -t -n state established`. Without `ss`, UDP rows still update and every TCP connection is **Unknown**, not disconnected. |
+
+`curl` is not required. It is a convenient way to read `/healthz` after install.
+
+### Runtime requirements
+
+These are not extra packages. The service will not report devices correctly without them.
+
+- An existing syslog collector on this host, usually `rsyslog`, already receiving the devices. This package does not install a listener, open UDP or TCP 514, or change collector rules.
+- One regular log file per source, inside a directory listed in `log_directories`. A shared log file cannot show which device wrote last. The optional example is [`examples/rsyslog-per-device.conf`](examples/rsyslog-per-device.conf).
+- Read permission on those files and on their parent directories. The packaged unit runs as root and keeps only `CAP_DAC_READ_SEARCH`, which is what lets it stat root-owned logs.
+- Write permission on `/var/lib/syslog-gomonitor`. systemd creates that directory for the size snapshot. The rest of the filesystem is read-only for the service.
+- `127.0.0.1:8080` free. The unit binds only that address. View it from another machine with an SSH tunnel rather than by publishing the port.
+- A JSON inventory at `/etc/syslog-gomonitor/devices.json`. `install.sh` creates one from the directories you enter. Device names, source IPs, and log paths must be unique.
+- Disk for the per-source files and their rotations. Stored size is the current on-disk total, measured about once an hour.
+- A clock within about a minute of true time. A modification time more than 60 seconds in the future is reported as **Unknown**.
+- On an SELinux-enforcing host, normal labels on the installed paths. `restorecon` from `policycoreutils` can apply them. The install script does not run it.
+
+The dashboard's first view is plain HTML. Live refresh, search, and the summary-card filters use JavaScript in the browser. Reloading the page works when JavaScript is disabled.
+
+The container lab and the single-process demo are not part of the production install. The lab needs Docker Engine with Compose v2. The demo needs Go 1.22 or newer on a workstation.
+
 ## Install on the syslog server
 
-Version 1.0.0 is the offline tarball built by `./release/build.sh`. The server
-does not need Go. Full steps, including the directory prompt and upgrades, are
-in [docs/install.md](docs/install.md).
+Version 1.0.0 is the offline tarball built by `./release/build.sh`. Full steps,
+including the directory prompt and upgrades, are in
+[docs/install.md](docs/install.md).
 
 ```bash
 ./release/build.sh
