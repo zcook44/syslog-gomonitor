@@ -1,0 +1,12 @@
+[Unit]
+Description=Measure stored syslog size once an hour
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+AccuracySec=1min
+Persistent=true
+Unit=syslog-gomonitor-size.service
+
+[Install]
+WantedBy=timers.target

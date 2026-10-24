@@ -1,0 +1,43 @@
+<p class="checked">{{.Checked}}</p>
+<section class="summary" aria-label="Filter devices">
+  <button type="button" class="card" data-filter="all" aria-pressed="false"><strong>{{.Total}}</strong><span>Devices</span></button>
+  <button type="button" class="card healthy" data-filter="healthy" aria-pressed="false"><strong>{{.Healthy}}</strong><span>Healthy</span></button>
+  <button type="button" class="card attention" data-filter="attention" aria-pressed="false"><strong>{{.Attention}}</strong><span>Needs attention</span></button>
+  <button type="button" class="card unknown" data-filter="unknown" aria-pressed="false"><strong>{{.Unknown}}</strong><span>Unknown</span></button>
+  <article class="card"><strong>{{.Stored}}</strong><span>Stored logs</span></article>
+</section>
+<p class="note">{{.SizeNote}}</p>
+<div class="table-wrap">
+<table>
+<caption>Expected syslog sources. Problems are listed first. Stored size counts the active log and rotated files beside it.</caption>
+<thead>
+<tr>
+<th scope="col">Device</th>
+<th scope="col">Source</th>
+<th scope="col">Reporting</th>
+<th scope="col">Connection</th>
+<th scope="col">Last write</th>
+<th scope="col">Active file</th>
+<th scope="col">Stored logs</th>
+<th scope="col">Overall</th>
+</tr>
+</thead>
+<tbody>
+{{range .Rows}}
+<tr class="row {{.StatusClass}}" data-status="{{.StatusClass}}" data-search="{{.Search}}">
+<td><div class="device">{{.Name}}</div><div class="path" title="{{.Path}}">{{.Path}}</div></td>
+<td><div class="mono">{{.Source}}</div><div class="meta">{{.Transport}}</div></td>
+<td><div>{{.LogLabel}}</div><div class="meta">{{.LogDetail}}</div></td>
+<td>{{.ConnDetail}}</td>
+<td class="mono"><div>{{.LastTime}}</div>{{if .LastDay}}<div class="meta">{{.LastDay}}</div>{{end}}</td>
+<td><div class="num" title="{{.ActiveTitle}}">{{.Active}}</div></td>
+<td><div class="num" title="{{.StoredTitle}}">{{.Stored}}</div><div class="meta">{{.StoredDetail}}</div></td>
+<td><span class="pill {{.StatusClass}}">{{.StatusLabel}}</span></td>
+</tr>
+{{else}}
+<tr><td colspan="8">No devices are loaded.</td></tr>
+{{end}}
+<tr id="filter-empty" hidden><td colspan="8">No devices match this search or filter.</td></tr>
+</tbody>
+</table>
+</div>

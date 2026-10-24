@@ -1,0 +1,29 @@
+{
+  "stale_after_seconds": 900,
+  "monitor_overdue_seconds": 180,
+  "log_directories": [
+    "/var/log/remote",
+    "/var/log/firewall"
+  ],
+  "log_path_template": "/var/log/remote/{source_ip}/syslog.log",
+  "devices": [
+    {
+      "name": "edge-router-01",
+      "source_ip": "192.0.2.10",
+      "protocol": "udp"
+    },
+    {
+      "name": "core-switch-01",
+      "source_ip": "192.0.2.11",
+      "protocol": "tcp",
+      "tcp_port": 514,
+      "stale_after_seconds": 600
+    },
+    {
+      "name": "firewall-01",
+      "source_ip": "192.0.2.12",
+      "log_path": "/var/log/firewall/firewall-01.log",
+      "protocol": "udp"
+    }
+  ]
+}

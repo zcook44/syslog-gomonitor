@@ -1,0 +1,22 @@
+[Unit]
+Description=Measure stored syslog size for each expected device
+Documentation=file:/usr/local/share/doc/syslog-gomonitor/README.md
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/bin/syslog-gomonitor size --config /etc/syslog-gomonitor/devices.json --state /var/lib/syslog-gomonitor/sizes.json
+StateDirectory=syslog-gomonitor
+UMask=0022
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
