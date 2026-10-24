@@ -1,0 +1,149 @@
+# Lab for syslog-gomonitor. The collector builds the monitor from this
+# source tree, so later releases are tested by rebuilding that one service.
+name: syslog-gomonitor-lab
+
+networks:
+  lab:
+    ipam:
+      config:
+        - subnet: 10.88.0.0/24
+          gateway: 10.88.0.1
+
+x-sender: &sender
+  build: ./sender
+  image: syslog-gomonitor-lab-sender:local
+  depends_on: [collector]
+  restart: unless-stopped
+
+services:
+  collector:
+    build:
+      context: ..
+      dockerfile: lab/collector/Dockerfile
+    image: syslog-gomonitor-lab-collector:local
+    networks:
+      lab:
+        ipv4_address: 10.88.0.2
+    ports:
+      - "127.0.0.1:18080:8080"
+    restart: unless-stopped
+
+  edge-router-01:
+    <<: *sender
+    environment:
+      MODE: udp-heartbeat
+      DEVICE: edge-router-01
+      INTERVAL: "5"
+    networks:
+      lab:
+        ipv4_address: 10.88.0.10
+
+  core-switch-01:
+    <<: *sender
+    environment:
+      MODE: tcp-heartbeat
+      DEVICE: core-switch-01
+      INTERVAL: "5"
+    networks:
+      lab:
+        ipv4_address: 10.88.0.11
+
+  dist-switch-02:
+    <<: *sender
+    restart: "no"
+    environment:
+      MODE: udp-once
+      DEVICE: dist-switch-02
+    networks:
+      lab:
+        ipv4_address: 10.88.0.12
+
+  wan-router-02:
+    <<: *sender
+    environment:
+      MODE: tcp-burst
+      DEVICE: wan-router-02
+      INTERVAL: "20"
+    networks:
+      lab:
+        ipv4_address: 10.88.0.14
+
+  core-router-02:
+    <<: *sender
+    restart: "no"
+    environment:
+      MODE: tcp-hold
+      DEVICE: core-router-02
+    networks:
+      lab:
+        ipv4_address: 10.88.0.15
+
+  dmz-firewall-01:
+    <<: *sender
+    restart: "no"
+    environment:
+      MODE: udp-once
+      DEVICE: dmz-firewall-01
+    networks:
+      lab:
+        ipv4_address: 10.88.0.17
+
+  branch-router-01:
+    <<: *sender
+    environment:
+      MODE: udp-heartbeat
+      DEVICE: branch-router-01
+      INTERVAL: "5"
+    networks:
+      lab:
+        ipv4_address: 10.88.0.18
+
+  idf-switch-04:
+    <<: *sender
+    restart: "no"
+    environment:
+      MODE: udp-once
+      DEVICE: idf-switch-04
+    networks:
+      lab:
+        ipv4_address: 10.88.0.19
+
+  vpn-gw-01:
+    <<: *sender
+    environment:
+      MODE: tcp-heartbeat
+      DEVICE: vpn-gw-01
+      INTERVAL: "5"
+    networks:
+      lab:
+        ipv4_address: 10.88.0.20
+
+  wireless-01:
+    <<: *sender
+    environment:
+      MODE: udp-heartbeat
+      DEVICE: wireless-01
+      INTERVAL: "5"
+    networks:
+      lab:
+        ipv4_address: 10.88.0.21
+
+  ups-01:
+    <<: *sender
+    environment:
+      MODE: udp-slow
+      DEVICE: ups-01
+      INTERVAL: "30"
+    networks:
+      lab:
+        ipv4_address: 10.88.0.22
+
+  firewall-01:
+    <<: *sender
+    restart: "no"
+    environment:
+      MODE: udp-once
+      DEVICE: firewall-01
+    networks:
+      lab:
+        ipv4_address: 10.88.0.30

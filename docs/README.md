@@ -20,6 +20,8 @@ regular file per source.
 | [Install](install.md) | Building the offline package and installing it on a production syslog server |
 | [Operations](operations.md) | The dashboard, commands, status meanings, and troubleshooting |
 
-The development tree also has a short [project README](../README.md) and a
-disposable demo (`go run ./cmd/syslog-gomonitor demo`). The demo is for a
-workstation. Production uses the package described in the install document.
+The development tree also has a short [project README](../README.md). The
+[lab](../lab/README.md) is the container test bed for later releases: rsyslog,
+example senders, and the dashboard on `http://127.0.0.1:18080/`.
+`go run ./cmd/syslog-gomonitor demo` is a smaller preview without rsyslog.
+Production uses the package described in the install document.

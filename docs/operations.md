@@ -135,9 +135,24 @@ The optional timer unit runs the size command at a lower CPU and I/O priority
 than the dashboard process. Use that split when the log directories are large
 enough that you do not want the walk inside the process serving the page.
 
+## Lab
+
+The container lab in [../lab/README.md](../lab/README.md) is the test bed for
+changes after 1.0.0. A collector container runs rsyslog and a monitor built
+from the working tree. More than ten example containers send syslog, and the
+collector pins a few files so the page also shows missing, stale, empty,
+symlink, and future-mtime rows. The dashboard is at `http://127.0.0.1:18080/`.
+
+```bash
+docker compose -f lab/compose.yaml up -d --build
+```
+
+Rebuild `collector` after a monitor change. That image is the only one that
+contains the program.
+
 ## Demo, not production
 
-On a workstation with Go:
+The single-process demo does not run rsyslog. On a workstation with Go:
 
 ```bash
 go run ./cmd/syslog-gomonitor demo

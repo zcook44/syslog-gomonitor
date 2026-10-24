@@ -80,10 +80,23 @@ is an optional extra copy for an existing imudp/imtcp ruleset. Do not enable it
 until you have checked rule order, disk, SELinux, and rotation. Run
 `rsyslogd -N1` before restarting rsyslog.
 
+## Lab
+
+The container lab is the place to try monitor changes, starting from this
+1.0.0 tree and continuing through later releases. It runs rsyslog plus this
+source tree, and example containers send syslog at that collector. Open
+<http://127.0.0.1:18080/>. Directions and the fourteen example rows are in
+[lab/README.md](lab/README.md).
+
+```bash
+docker compose -f lab/compose.yaml up -d --build
+```
+
 ## Demo
 
 The demo writes example logs and opens two loopback TCP sessions. It does not
-touch a real syslog daemon or the system web root. From this directory:
+touch a real syslog daemon or the system web root. It is a single-process
+preview when Docker is not what you want to run. From this directory:
 
 ```bash
 go run ./cmd/syslog-gomonitor demo

@@ -1,0 +1,4 @@
+.git
+release/*.tar.gz
+release/*.sha256
+release/syslog-gomonitor-*/
