@@ -83,6 +83,7 @@
   .card.healthy strong { color: var(--healthy-fg); }
   .card.attention strong { color: var(--attention-fg); }
   .card.unknown strong { color: var(--unknown-fg); }
+  .card.ignored strong { color: var(--muted); }
   .note { margin: 0 0 .9rem; }
   .table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: .8rem; box-shadow: var(--shadow); }
   table { width: 100%; border-collapse: collapse; }
@@ -103,6 +104,30 @@
   .pill.healthy { background: var(--healthy-bg); color: var(--healthy-fg); }
   .pill.attention { background: var(--attention-bg); color: var(--attention-fg); }
   .pill.unknown { background: var(--unknown-bg); color: var(--unknown-fg); }
+  .note.bad { color: var(--attention-fg); }
+  .adoption { margin: 0 0 1.1rem; }
+  .adoption h2, .adoption h3 { margin: 0 0 .35rem; font-size: 1.15rem; }
+  .adoption h3 { margin-top: 1rem; font-size: 1rem; }
+  .adopt-list { display: flex; flex-direction: column; gap: .75rem; }
+  .adopt-card, .ignore-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: .8rem;
+    padding: .85rem .95rem; box-shadow: var(--shadow);
+  }
+  .adopt-fields { display: flex; flex-wrap: wrap; gap: .6rem .75rem; align-items: flex-end; margin-top: .7rem; }
+  .adopt-fields label { display: flex; flex-direction: column; gap: .2rem; font-size: .82rem; color: var(--muted); }
+  .adopt-fields input, .adopt-fields select {
+    font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: .45rem; padding: .4rem .55rem; min-width: 10rem;
+  }
+  .adopt-fields input:focus-visible, .adopt-fields select:focus-visible,
+  button.action:focus-visible, button.quiet:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+  button.action, button.quiet {
+    font: inherit; font-weight: 650; border-radius: .5rem; padding: .45rem .8rem; cursor: pointer;
+  }
+  button.action { background: var(--accent); color: var(--bg); border: 0; }
+  button.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  button.action:disabled, button.quiet:disabled { cursor: default; opacity: .6; }
   footer { padding: 1rem 0 2rem; }
   footer p { margin: 0; }
 </style>
@@ -124,6 +149,7 @@
     <p id="match-count" class="match-count" aria-live="polite"></p>
   </div>
   <div id="board">{{.Board}}</div>
+  <p id="action-status" class="note" role="status"></p>
 </main>
 <footer>
   <p>A device is healthy when its own log file was written within its silence limit. TCP devices also need an established session to the configured port. UDP has no connection to check. The active file size is the current log. Stored logs add rotated files in the same directory and are not recounted on every status check. Log contents are never read or shown.</p>
@@ -138,30 +164,48 @@
   var matchCount = document.getElementById("match-count");
   var link = "up";
   var statusFilter = "";
+  var view = "";
+  var actionStatus = document.getElementById("action-status");
+  var busy = false;
+
+  function setPressed(cards, selected) {
+    for (var c = 0; c < cards.length; c++) {
+      var on = selected(cards[c]);
+      cards[c].classList.toggle("selected", on);
+      cards[c].setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
 
   function applyFilters() {
     var query = (search && search.value || "").trim().toLowerCase();
+    var showDevices = view === "";
+    var deviceBoard = document.getElementById("device-board");
+    var candidates = board.querySelector("[data-view-panel='candidates']");
+    var ignored = board.querySelector("[data-view-panel='ignored']");
+    if (deviceBoard) deviceBoard.hidden = !showDevices;
+    if (candidates) candidates.hidden = view !== "candidates";
+    if (ignored) ignored.hidden = view !== "ignored";
     var rows = board.querySelectorAll("tbody tr.row");
     var shown = 0;
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
       var status = row.getAttribute("data-status") || "";
       var haystack = row.getAttribute("data-search") || "";
-      var visible = (statusFilter === "" || status === statusFilter) &&
+      var visible = showDevices && (statusFilter === "" || status === statusFilter) &&
         (query === "" || haystack.indexOf(query) !== -1);
       row.hidden = !visible;
       if (visible) shown++;
     }
     var empty = document.getElementById("filter-empty");
-    if (empty) empty.hidden = rows.length === 0 || shown !== 0;
-    var cards = board.querySelectorAll("[data-filter]");
-    for (var c = 0; c < cards.length; c++) {
-      var on = statusFilter !== "" && cards[c].getAttribute("data-filter") === statusFilter;
-      cards[c].classList.toggle("selected", on);
-      cards[c].setAttribute("aria-pressed", on ? "true" : "false");
-    }
+    if (empty) empty.hidden = !showDevices || rows.length === 0 || shown !== 0;
+    setPressed(board.querySelectorAll("[data-filter]"), function (card) {
+      return showDevices && statusFilter !== "" && card.getAttribute("data-filter") === statusFilter;
+    });
+    setPressed(board.querySelectorAll("[data-view]"), function (card) {
+      return card.getAttribute("data-view") === view;
+    });
     if (matchCount) {
-      if (query === "" && statusFilter === "") matchCount.textContent = "";
+      if (!showDevices || (query === "" && statusFilter === "")) matchCount.textContent = "";
       else matchCount.textContent = "Showing " + shown + " of " + rows.length;
     }
   }
@@ -183,11 +227,105 @@
     liveText.textContent = "Live";
   }
 
+  function adoptionDirty(root) {
+    if (!root) return false;
+    if (root.contains(document.activeElement)) return true;
+    var fields = root.querySelectorAll("input, select");
+    for (var i = 0; i < fields.length; i++) {
+      var input = fields[i];
+      if (input.tagName === "SELECT") {
+        var chosen = input.options[input.selectedIndex];
+        if (chosen && !chosen.defaultSelected) return true;
+        continue;
+      }
+      if (input.value !== input.defaultValue) return true;
+    }
+    return false;
+  }
+
+  function setAction(text, bad) {
+    if (!actionStatus) return;
+    actionStatus.textContent = text || "";
+    actionStatus.className = bad ? "note bad" : "note";
+  }
+
+  function postJSON(url, body) {
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "syslog-gomonitor"
+      },
+      body: JSON.stringify(body)
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw new Error((data && data.error) || "The inventory could not be updated.");
+        return data;
+      });
+    });
+  }
+
+  function field(card, name) {
+    var el = card.querySelector('[data-field="' + name + '"]');
+    return el ? el.value.trim() : "";
+  }
+
+  function runAction(btn) {
+    if (busy) return;
+    var card = btn.closest("[data-path]");
+    if (!card) return;
+    var action = btn.getAttribute("data-action");
+    var logPath = card.getAttribute("data-path") || "";
+    var body = { log_path: logPath };
+    var url = "/api/ignore";
+    var done = "Ignored this file.";
+    if (action === "unignore") {
+      url = "/api/unignore";
+      done = "This file can be adopted again.";
+    } else if (action === "adopt") {
+      var name = field(card, "name");
+      if (!name) {
+        setAction("Enter a device name before adopting.", true);
+        return;
+      }
+      var locked = card.getAttribute("data-ip-locked") === "true";
+      var source = locked ? (card.getAttribute("data-source-ip") || "") : field(card, "source");
+      if (!locked && !source) {
+        setAction("Enter the source IP address before adopting.", true);
+        return;
+      }
+      var protocol = field(card, "protocol") || "udp";
+      body = { name: name, source_ip: source, protocol: protocol, log_path: logPath };
+      var port = field(card, "port");
+      if (protocol === "tcp" && port) body.tcp_port = Number(port);
+      url = "/api/adopt";
+      done = "Adopted " + name + ".";
+    }
+    busy = true;
+    btn.disabled = true;
+    setAction("Saving…", false);
+    postJSON(url, body).then(function () {
+      setAction(done, false);
+    }).catch(function (err) {
+      setAction(err.message || "The inventory could not be updated.", true);
+    }).then(function () {
+      busy = false;
+      if (btn.isConnected) btn.disabled = false;
+    });
+  }
+
   function apply(msg) {
     if (!msg || typeof msg.html !== "string") {
       return;
     }
+    var adoption = document.getElementById("adoption");
+    var keep = adoptionDirty(adoption) ? adoption : null;
+    var rev = keep ? keep.getAttribute("data-revision") : "";
     board.innerHTML = msg.html;
+    if (keep) {
+      var next = document.getElementById("adoption");
+      if (next && next.getAttribute("data-revision") === rev) next.replaceWith(keep);
+    }
     if (msg.generated_at) {
       document.body.setAttribute("data-generated-at", msg.generated_at);
     }
@@ -197,8 +335,25 @@
   }
 
   board.addEventListener("click", function (ev) {
+    var action = ev.target.closest("[data-action]");
+    if (action && board.contains(action)) {
+      runAction(action);
+      return;
+    }
+    var viewCard = ev.target.closest("[data-view]");
+    if (viewCard && board.contains(viewCard)) {
+      var chosen = viewCard.getAttribute("data-view");
+      if (chosen === view) view = "";
+      else {
+        view = chosen;
+        statusFilter = "";
+      }
+      applyFilters();
+      return;
+    }
     var card = ev.target.closest("[data-filter]");
     if (!card || !board.contains(card)) return;
+    view = "";
     var next = card.getAttribute("data-filter");
     if (next === "all" || next === statusFilter) statusFilter = "";
     else statusFilter = next;

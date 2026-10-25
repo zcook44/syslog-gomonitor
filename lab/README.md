@@ -65,3 +65,9 @@ cannot hold.
 Search and the summary cards work on this page the same way they do in
 production. The collector listens on the lab bridge only; host port 514 is not
 published.
+
+The lab inventory sets `log_directories`, so the summary includes **Not in
+inventory** and **Ignored**. The example files are already devices, or they
+are rotations and notes beside a device log, so both counts stay at zero
+unless a sender writes a new address directory. Adopt and ignore on that page
+rewrite the lab inventory inside the collector container.

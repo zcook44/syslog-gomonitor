@@ -6,10 +6,10 @@ The installed binary is `/usr/local/bin/syslog-gomonitor`.
 
 | Command | What it does |
 | --- | --- |
-| `serve` | Run the dashboard, the activity poll, and by default the hourly size pass. |
+| `serve` | Run the dashboard, the activity poll, discovery of untracked files, and by default the hourly size pass. |
 | `size` | Measure stored size once, write the snapshot, and print a text report. |
 | `check` | Print one JSON snapshot. Uses the saved sizes unless `--scan-size` is set. |
-| `validate` | Check the inventory and print the watched directories and resolved paths. Does not stat logs. |
+| `validate` | Check the inventory and print the watched directories, ignored paths, and resolved device paths. Does not stat logs. |
 | `configure` | Save `log_directories` into the inventory. Creates a starter inventory when the file is missing. Keeps existing devices. |
 | `demo` | Workstation-only synthetic fleet. Not used on the syslog server. |
 
@@ -22,6 +22,7 @@ The installed binary is `/usr/local/bin/syslog-gomonitor`.
 | `--listen` | `127.0.0.1:8080` | `host:port` |
 | `--poll` | `5s` | Activity check interval. Minimum `200ms`. |
 | `--size-interval` | `1h` | Stored-size interval. `0s` reads the snapshot and does not scan. |
+| `--discover-interval` | `30s` | How often to look for files in `log_directories` that are not in the inventory. `0s` does that once at startup. |
 
 ## Dashboard
 
@@ -30,17 +31,22 @@ inventory, not the rows left after a filter.
 
 | Card | Click |
 | --- | --- |
-| Devices | Clear a status filter and show every device. |
+| Devices | Clear a status filter and show the device table, including when **Not in inventory** or **Ignored** is open. |
 | Healthy | Show only healthy devices. |
 | Needs attention | Show only devices that need attention. |
 | Unknown | Show only unknown devices. |
 | Stored logs | Not a filter. Total bytes from successful size measurements. |
+| Not in inventory | Shown when `log_directories` is set. Hides the device table and lists files that are not devices. The count is not part of the device total. |
+| Ignored | Shown when `log_directories` is set. Hides the device table and lists paths recorded in `ignored`. The count is not part of the device total. |
 
-Clicking the card that is already selected clears that filter and leaves no
-card highlighted. **Devices** also clears a status filter. The search box
-matches the device name, source address, log path, protocol, reporting state,
-and overall status. Search and a card apply together. "Showing 2 of 9" counts
-rows that pass both. A live update keeps the current search and the current card.
+Clicking a status card that is already selected clears that filter and leaves
+no card highlighted. **Devices** also clears a status filter. Selecting **Not
+in inventory** or **Ignored** again returns to the device table, as does
+selecting any device card. The search box matches the device name, source
+address, log path, protocol, reporting state, and overall status. Search and a
+status card apply together, and only to the device table. "Showing 2 of 9"
+counts rows that pass both. A live update keeps the current search and the
+open card.
 
 Columns:
 
@@ -57,6 +63,19 @@ Rows are ordered with problems first, then unknown, then healthy, and by name
 inside each group. The active-file number can move past the stored total
 between hourly passes. That is expected: stored size is not recomputed when
 the current file grows.
+
+From those two lists:
+
+| Action | Result |
+| --- | --- |
+| Adopt | Appends the device to `devices.json`. A per-address file keeps the address in its path. A loose file needs a source IP. The new row appears on the next update. |
+| Ignore | Adds the path to `ignored`. The file is not monitored. A per-address ignore also hides that source address if the file is created again. |
+| Stop ignoring | Removes the `ignored` entry. The file is offered again when it is still there. |
+
+The name field is editable until you adopt. Rotations, `.offset` and `.state`
+files, and symlinks are not listed. The list says when a directory could not
+be read, or when more than 100 untracked files were found. `validate` prints
+ignored paths. `check` includes `candidates` and `ignored` in the JSON snapshot.
 
 ## How to read a row
 
@@ -110,8 +129,9 @@ journalctl -u syslog-gomonitor.service -n 50 --no-pager
 curl --fail http://127.0.0.1:8080/healthz
 ```
 
-The journal records startup, each hourly measurement, an inventory reload, and
-a measurement that could not be saved. It does not record every 5-second poll.
+The journal records startup, each hourly measurement, an inventory reload, an
+adopt or ignore, and a measurement that could not be saved. It does not
+record every 5-second poll or every discovery pass.
 
 ## Failure behavior
 
@@ -119,6 +139,8 @@ a measurement that could not be saved. It does not record every 5-second poll.
 | --- | --- |
 | Device log missing | Row needs attention. The service stays up. |
 | Inventory edit does not validate | Previous device list keeps running. The error is logged. |
+| Adopt or ignore is rejected | The page shows the reason. `devices.json` is unchanged when the new file would not validate. |
+| Adopt or ignore cannot replace `devices.json` | The page says the inventory could not be updated. The previous file remains when the replace itself fails. |
 | `ss` fails | TCP connections become Unknown. UDP rows are unchanged. |
 | Size snapshot cannot be written | The in-memory totals from that pass are still shown. The old file remains. The next pass tries again. |
 | Process crash | systemd restarts it after 2 seconds. Activity history is not recovered. `sizes.json` is recovered when it is newer than the interval. |

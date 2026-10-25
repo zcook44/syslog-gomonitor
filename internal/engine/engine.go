@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"syslog-gomonitor/internal/activity"
+	"syslog-gomonitor/internal/discover"
 	"syslog-gomonitor/internal/inventory"
 	"syslog-gomonitor/internal/session"
 	"syslog-gomonitor/internal/snapshot"
@@ -24,29 +25,35 @@ import (
 // Options configures one engine. Zero poll and size intervals are filled in
 // by the caller; a non-positive size interval disables the in-process scan.
 type Options struct {
-	ConfigPath   string
-	StatePath    string
-	PollInterval time.Duration
-	SizeInterval time.Duration
-	Now          func() time.Time
-	Lister       session.Lister
+	ConfigPath       string
+	StatePath        string
+	PollInterval     time.Duration
+	SizeInterval     time.Duration
+	DiscoverInterval time.Duration
+	Now              func() time.Time
+	Lister           session.Lister
 }
 
 // Engine holds the latest status and the cached hourly sizes.
 type Engine struct {
-	mu         sync.RWMutex
-	inv        inventory.Inventory
-	configPath string
-	configMod  time.Time
-	statePath  string
-	poll       time.Duration
-	sizeEvery  time.Duration
-	now        func() time.Time
-	lister     session.Lister
-	measuredAt time.Time
-	sizes      map[string]storage.Measurement
-	latest     snapshot.Snapshot
-	subs       map[chan snapshot.Snapshot]struct{}
+	mu            sync.RWMutex
+	inv           inventory.Inventory
+	configPath    string
+	configMod     time.Time
+	statePath     string
+	poll          time.Duration
+	sizeEvery     time.Duration
+	now           func() time.Time
+	lister        session.Lister
+	measuredAt    time.Time
+	sizes         map[string]storage.Measurement
+	latest        snapshot.Snapshot
+	candidates    []snapshot.Candidate
+	discoverNote  string
+	generation    uint64
+	discoverEvery time.Duration
+	editMu        sync.Mutex
+	subs          map[chan snapshot.Snapshot]struct{}
 }
 
 // New prepares an engine. The inventory is already validated.
@@ -60,15 +67,16 @@ func New(inv inventory.Inventory, opt Options) *Engine {
 		lister = session.Command{}
 	}
 	eng := &Engine{
-		inv:        inv,
-		configPath: opt.ConfigPath,
-		statePath:  opt.StatePath,
-		poll:       opt.PollInterval,
-		sizeEvery:  opt.SizeInterval,
-		now:        now,
-		lister:     lister,
-		sizes:      map[string]storage.Measurement{},
-		subs:       map[chan snapshot.Snapshot]struct{}{},
+		inv:           inv,
+		configPath:    opt.ConfigPath,
+		statePath:     opt.StatePath,
+		poll:          opt.PollInterval,
+		sizeEvery:     opt.SizeInterval,
+		discoverEvery: opt.DiscoverInterval,
+		now:           now,
+		lister:        lister,
+		sizes:         map[string]storage.Measurement{},
+		subs:          map[chan snapshot.Snapshot]struct{}{},
 	}
 	if opt.ConfigPath != "" {
 		if info, err := os.Stat(opt.ConfigPath); err == nil {
@@ -85,6 +93,7 @@ func (e *Engine) Prime(ctx context.Context) {
 	if err := e.ReloadState(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		slog.Warn("ignoring unreadable size snapshot", "path", e.statePath, "err", err)
 	}
+	e.RefreshCandidates()
 	if e.needsInitialScan() {
 		if err := e.ScanSizes(ctx); err != nil {
 			slog.Warn("stored-size measurement failed", "err", err)
@@ -111,6 +120,13 @@ func (e *Engine) Run(ctx context.Context) {
 		sizeC = sizeTimer.C
 		defer sizeTimer.Stop()
 	}
+	var discoverC <-chan time.Time
+	var discoverTimer *time.Timer
+	if e.discoverEvery > 0 {
+		discoverTimer = time.NewTimer(e.discoverEvery)
+		discoverC = discoverTimer.C
+		defer discoverTimer.Stop()
+	}
 
 	for {
 		select {
@@ -124,13 +140,23 @@ func (e *Engine) Run(ctx context.Context) {
 				slog.Warn("stored-size measurement failed", "err", err)
 			}
 			sizeTimer.Reset(e.sizeEvery)
+		case <-discoverC:
+			e.RefreshCandidates()
+			e.Sample(ctx)
+			discoverTimer.Reset(e.discoverEvery)
 		}
 	}
 }
 
 // Sample stats every device and merges the cached size measurement.
 func (e *Engine) Sample(ctx context.Context) snapshot.Snapshot {
-	inv := e.inventory()
+	e.mu.RLock()
+	gen := e.generation
+	inv := e.inv
+	candidates := append([]snapshot.Candidate(nil), e.candidates...)
+	note := e.discoverNote
+	e.mu.RUnlock()
+
 	var sessions map[session.Endpoint]struct{}
 	var tcpErr error
 	if inv.NeedsTCP() {
@@ -148,6 +174,10 @@ func (e *Engine) Sample(ctx context.Context) snapshot.Snapshot {
 		utc := measuredAt.UTC()
 		measured = &utc
 	}
+	var watched []string
+	if len(inv.LogDirectories) > 0 {
+		watched = append([]string(nil), inv.LogDirectories...)
+	}
 	snap := snapshot.Snapshot{
 		GeneratedAt:           now,
 		MonitorOverdueSeconds: inv.MonitorOverdueSeconds,
@@ -156,8 +186,17 @@ func (e *Engine) Sample(ctx context.Context) snapshot.Snapshot {
 		SizeIntervalSeconds:   seconds(e.sizeEvery),
 		Devices:               rows,
 		Summary:               snapshot.Summarize(rows),
+		WatchedDirectories:    watched,
+		DiscoverNote:          note,
+		Candidates:            candidates,
+		Ignored:               ignoredRows(inv),
 	}
 	e.mu.Lock()
+	if gen != e.generation {
+		latest := e.latest
+		e.mu.Unlock()
+		return latest
+	}
 	e.latest = snap
 	e.mu.Unlock()
 	e.notify(snap)
@@ -248,24 +287,152 @@ func (e *Engine) reload(ctx context.Context) {
 	if !info.ModTime().After(prev) {
 		return
 	}
-	inv, err := inventory.Load(e.configPath)
-	if err != nil {
-		slog.Error("inventory reload failed; keeping the previous inventory", "err", err)
-		e.mu.Lock()
-		e.configMod = info.ModTime()
-		e.mu.Unlock()
+	e.editMu.Lock()
+	defer e.editMu.Unlock()
+	changed, err := e.reloadFile(false)
+	if err != nil || !changed {
 		return
 	}
-	e.mu.Lock()
-	e.inv = inv
-	e.configMod = info.ModTime()
-	e.mu.Unlock()
-	slog.Info("reloaded inventory", "devices", len(inv.Devices))
+	e.scanCandidates(ctx)
 	if e.sizeEvery > 0 {
 		if err := e.ScanSizes(ctx); err != nil {
 			slog.Warn("stored-size measurement failed", "err", err)
 		}
 	}
+}
+
+// RefreshCandidates looks for untracked files in the watched directories.
+func (e *Engine) RefreshCandidates() {
+	e.editMu.Lock()
+	e.scanCandidates(context.Background())
+	e.editMu.Unlock()
+}
+
+// Adopt appends a device to the inventory and publishes a new snapshot.
+func (e *Engine) Adopt(ctx context.Context, in inventory.Adoption) error {
+	e.editMu.Lock()
+	defer e.editMu.Unlock()
+	if err := e.requireConfig(); err != nil {
+		return err
+	}
+	if err := inventory.Adopt(e.configPath, in); err != nil {
+		return err
+	}
+	if _, err := e.reloadFile(true); err != nil {
+		return err
+	}
+	slog.Info("adopted device", "name", in.Name, "log_path", in.LogPath)
+	e.finishEdit(ctx)
+	return nil
+}
+
+// Ignore records a watched file so it is no longer offered for adoption.
+func (e *Engine) Ignore(ctx context.Context, logPath string) error {
+	e.editMu.Lock()
+	defer e.editMu.Unlock()
+	if err := e.requireConfig(); err != nil {
+		return err
+	}
+	if err := inventory.Ignore(e.configPath, logPath); err != nil {
+		return err
+	}
+	if _, err := e.reloadFile(true); err != nil {
+		return err
+	}
+	slog.Info("ignored untracked source", "log_path", logPath)
+	e.finishEdit(ctx)
+	return nil
+}
+
+// Unignore removes a path from the ignored list.
+func (e *Engine) Unignore(ctx context.Context, logPath string) error {
+	e.editMu.Lock()
+	defer e.editMu.Unlock()
+	if err := e.requireConfig(); err != nil {
+		return err
+	}
+	if err := inventory.Unignore(e.configPath, logPath); err != nil {
+		return err
+	}
+	if _, err := e.reloadFile(true); err != nil {
+		return err
+	}
+	slog.Info("stopped ignoring source", "log_path", logPath)
+	e.finishEdit(ctx)
+	return nil
+}
+
+func (e *Engine) requireConfig() error {
+	if e.configPath == "" {
+		return &inventory.UserError{Message: "This monitor has no inventory file to update."}
+	}
+	return nil
+}
+
+func (e *Engine) finishEdit(ctx context.Context) {
+	e.scanCandidates(ctx)
+	if e.sizeEvery > 0 {
+		if err := e.ScanSizes(ctx); err != nil {
+			slog.Warn("stored-size measurement failed", "err", err)
+		}
+		return
+	}
+	e.Sample(ctx)
+}
+
+func (e *Engine) reloadFile(force bool) (bool, error) {
+	if e.configPath == "" {
+		return false, nil
+	}
+	info, err := os.Stat(e.configPath)
+	if err != nil {
+		return false, err
+	}
+	e.mu.RLock()
+	prev := e.configMod
+	e.mu.RUnlock()
+	if !force && !info.ModTime().After(prev) {
+		return false, nil
+	}
+	inv, err := inventory.Load(e.configPath)
+	if err != nil {
+		slog.Error("inventory reload failed; keeping the previous inventory", "err", err)
+		if !force {
+			e.mu.Lock()
+			e.configMod = info.ModTime()
+			e.mu.Unlock()
+		}
+		return false, err
+	}
+	e.mu.Lock()
+	e.inv = inv
+	e.configMod = info.ModTime()
+	e.generation++
+	e.mu.Unlock()
+	slog.Info("reloaded inventory", "devices", len(inv.Devices), "ignored", len(inv.Ignored))
+	return true, nil
+}
+
+func (e *Engine) scanCandidates(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return
+	}
+	inv := e.inventory()
+	result := discover.Scan(ctx, inv)
+	if ctx.Err() != nil {
+		return
+	}
+	mapped := snapshotCandidates(result.Candidates)
+	e.mu.Lock()
+	if result.Note != e.discoverNote || !sameCandidates(e.candidates, mapped) {
+		e.generation++
+	}
+	e.candidates = mapped
+	e.discoverNote = result.Note
+	e.mu.Unlock()
 }
 
 func (e *Engine) needsInitialScan() bool {
@@ -398,6 +565,58 @@ func sizeState(when time.Time, measured map[string]storage.Measurement) snapshot
 		}
 	}
 	return snapshot.SizeState{MeasuredAt: when, Devices: devices}
+}
+
+func ignoredRows(inv inventory.Inventory) []snapshot.Ignored {
+	if len(inv.Ignored) == 0 {
+		return nil
+	}
+	rows := make([]snapshot.Ignored, len(inv.Ignored))
+	for i, item := range inv.Ignored {
+		rows[i] = snapshot.Ignored{LogPath: item.LogPath, SourceIP: item.SourceIP}
+	}
+	return rows
+}
+
+func snapshotCandidates(found []discover.Candidate) []snapshot.Candidate {
+	if len(found) == 0 {
+		return nil
+	}
+	rows := make([]snapshot.Candidate, 0, len(found))
+	for _, item := range found {
+		row := snapshot.Candidate{
+			LogPath:       item.LogPath,
+			SourceIP:      item.SourceIP,
+			SuggestedName: item.SuggestedName,
+			ActiveBytes:   item.ActiveBytes,
+			Detail:        item.Detail,
+		}
+		if !item.LastWrite.IsZero() {
+			utc := item.LastWrite.UTC()
+			row.LastWrite = &utc
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func sameCandidates(a, b []snapshot.Candidate) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].LogPath != b[i].LogPath || a[i].SourceIP != b[i].SourceIP || a[i].ActiveBytes != b[i].ActiveBytes || !sameTime(a[i].LastWrite, b[i].LastWrite) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameTime(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.Equal(*b)
 }
 
 func seconds(d time.Duration) int {

@@ -1,8 +1,11 @@
 # Inventory and log files
 
-The inventory is the list of sources this server expects. It is not discovered
-from the network, and it is not an Ansible inventory. `source_ip` is the
-address the collector sees. When a device is translated by NAT, use the
+The inventory is the list of sources this server expects. It is not an
+Ansible inventory, and the monitor does not add a device because a packet
+arrived. When `log_directories` is set, the status page can append a device
+the operator adopts from a file that is already in one of those directories,
+or record a file under `ignored` so it is not offered again. `source_ip` is
+the address the collector sees. When a device is translated by NAT, use the
 address after translation.
 
 Start from [`devices.example.json`](../devices.example.json). The `192.0.2.x`
@@ -48,6 +51,7 @@ addresses in that file are documentation addresses. Replace them.
 | `log_path_template` | File | `{first directory}/{source_ip}/syslog.log` when directories are set | Absolute path containing `{source_ip}` once and no other braces. |
 | `log_directory` | Device | first `log_directories` entry | One of `log_directories`. The device file is `{log_directory}/{source_ip}/syslog.log`. |
 | `devices` | File | required | Non-empty list. |
+| `ignored` | File | none | Files in a watched directory that the dashboard must not offer for adoption and must not monitor. |
 | `name` | Device | required | Unique, ignoring case. No surrounding space or control characters. |
 | `source_ip` | Device | required | Literal IPv4 or IPv6. No zone index. IPv4-mapped IPv6 is stored as IPv4. |
 | `protocol` | Device | `udp` | `udp` or `tcp`. |
@@ -60,6 +64,33 @@ rejected rather than treating one session as proof for both.
 `tcp_port` on a UDP device is rejected. For syslog over TLS, set `protocol` to
 `tcp` and use the TLS port, often 6514. The monitor sees the TCP session, not
 the handshake.
+
+## Ignored sources
+
+`ignored` is optional. Each entry is a file that appeared under
+`log_directories` and should stay out of the inventory.
+
+```json
+"ignored": [
+  {"log_path": "/var/log/remote/noise.log"},
+  {
+    "log_path": "/var/log/remote/192.0.2.99/syslog.log",
+    "source_ip": "192.0.2.99"
+  }
+]
+```
+
+| Field | Rule |
+| --- | --- |
+| `log_path` | Required. Absolute file path inside `log_directories` when that list is set. Unique. Not a device path. |
+| `source_ip` | Optional. Literal address. Unique in this list, and not a device address. |
+
+The dashboard writes these entries from **Ignore**. A per-address file stores
+`source_ip`, and discovery then hides every untracked file for that address.
+**Stop ignoring** removes the entry. An entry that names a device path or a
+device address is rejected, so a source is not both tracked and ignored.
+`validate` prints the list. Removing `log_directories` does not keep an
+ignored path that would fall outside the new list.
 
 `log_directories` is the list of syslog trees to watch. The install script
 asks for these paths and writes them here. Change the list in this file when

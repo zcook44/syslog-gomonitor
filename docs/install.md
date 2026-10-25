@@ -131,6 +131,12 @@ Then open `http://127.0.0.1:8080/`. The page shows device names, addresses,
 and log paths. Leave the listener on loopback unless the host already has
 access control in front of it.
 
+A file that arrives under a watched directory can be adopted or ignored from
+that page. Both actions replace `/etc/syslog-gomonitor/devices.json`. The
+unit allows writes to that directory and nowhere else except the size-snapshot
+directory. See [Operations](operations.md) for the buttons and
+[Inventory and log files](inventory-and-logs.md) for the `ignored` list.
+
 Logs from the service:
 
 ```bash

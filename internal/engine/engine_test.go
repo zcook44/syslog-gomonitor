@@ -128,6 +128,97 @@ func TestScanSizesPersistsForALaterProcess(t *testing.T) {
 	}
 }
 
+func TestAdoptAndIgnoreRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	remote := filepath.Join(root, "remote")
+	if err := os.MkdirAll(filepath.Join(remote, "192.0.2.50"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	switchLog := filepath.Join(remote, "192.0.2.50", "syslog.log")
+	noise := filepath.Join(remote, "noise.log")
+	secret := "SECRET_LOG_LINE_SHOULD_NOT_LEAK"
+	if err := os.WriteFile(switchLog, []byte(secret+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(noise, []byte("garbage\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(root, "devices.json")
+	raw := []byte(`{
+		"log_directories": ["` + remote + `"],
+		"log_path_template": "` + remote + `/{source_ip}/syslog.log",
+		"devices": [{"name": "edge", "source_ip": "192.0.2.10", "protocol": "udp"}]
+	}`)
+	if err := os.WriteFile(config, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inv, err := inventory.Load(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := New(inv, Options{ConfigPath: config, Now: func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }})
+	eng.RefreshCandidates()
+	snap := eng.Sample(context.Background())
+	if len(snap.Candidates) != 2 {
+		t.Fatalf("candidates %+v", snap.Candidates)
+	}
+	if err := eng.Adopt(context.Background(), inventory.Adoption{
+		Name: "access-switch-04", Protocol: "udp", LogPath: switchLog,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snap = eng.Latest()
+	found := false
+	for _, device := range snap.Devices {
+		if device.Name == "access-switch-04" && device.SourceIP == "192.0.2.50" && device.LogPath == switchLog {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("devices %+v", snap.Devices)
+	}
+	for _, item := range snap.Candidates {
+		if item.LogPath == switchLog {
+			t.Fatal("adopted switch is still a candidate")
+		}
+	}
+	encoded, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, []byte(secret)) {
+		t.Fatal("snapshot included log contents")
+	}
+	if err := eng.Ignore(context.Background(), noise); err != nil {
+		t.Fatal(err)
+	}
+	snap = eng.Latest()
+	if len(snap.Ignored) != 1 || snap.Ignored[0].LogPath != noise {
+		t.Fatalf("ignored %+v", snap.Ignored)
+	}
+	for _, item := range snap.Candidates {
+		if item.LogPath == noise {
+			t.Fatal("ignored file is still a candidate")
+		}
+	}
+	if err := eng.Unignore(context.Background(), noise); err != nil {
+		t.Fatal(err)
+	}
+	snap = eng.Latest()
+	if len(snap.Ignored) != 0 {
+		t.Fatalf("ignored %+v", snap.Ignored)
+	}
+	back := false
+	for _, item := range snap.Candidates {
+		if item.LogPath == noise {
+			back = true
+		}
+	}
+	if !back {
+		t.Fatal("unignored file did not return")
+	}
+}
+
 func writeAged(t *testing.T, path string, body []byte, when time.Time) {
 	t.Helper()
 	if err := os.WriteFile(path, body, 0o644); err != nil {

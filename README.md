@@ -30,7 +30,9 @@ Operator documentation, including data flow and dark-site install, is in
 
 The page has a search box and the summary cards filter the table. Clicking the
 card that is already selected clears that filter. Search and cards apply
-together and stay in place when the page updates.
+together and stay in place when the page updates. When `log_directories` is
+set, **Not in inventory** and **Ignored** are extra cards. Either one replaces
+the device table until you select it again or return to a device card.
 
 A quiet device can be fine and still look stale. Give it a longer silence limit
 than the gap between its messages, or send a periodic heartbeat. A new empty
@@ -79,6 +81,33 @@ which device wrote it. [`examples/rsyslog-per-device.conf`](examples/rsyslog-per
 is an optional extra copy for an existing imudp/imtcp ruleset. Do not enable it
 until you have checked rule order, disk, SELinux, and rotation. Run
 `rsyslogd -N1` before restarting rsyslog.
+
+## Adopting a device
+
+A file that shows up under a watched directory is not a dashboard row until it
+is in the inventory. About every 30 seconds the service lists `log_directories`
+and offers regular files that are not already devices. The usual new switch is
+`{directory}/{source_ip}/syslog.log`.
+
+**Not in inventory** and **Ignored** are summary cards. The device table stays
+up until you select one. Selecting it again returns to the devices.
+
+On an untracked file, **Adopt** writes a device into `devices.json`. The name is
+required. The source address is taken from the path when the directory or file
+name is an address; otherwise you enter it. Protocol defaults to UDP. Choose
+TCP, and a port if it is not the inventory default, when the device keeps a
+session. The page reloads the inventory and starts tracking that file.
+
+**Ignore** records the path in the inventory's `ignored` list. The file stays
+out of the adoption list and is not monitored. Ignoring a per-address log also
+ignores that source address, so a recreated file for the same address stays
+hidden. **Stop ignoring** removes the entry. Use ignore when a bad syslog rule
+is dropping extra files into a watched directory.
+
+Rotated files, rsyslog `*.offset` and `*.state` files, and symlinks are not
+offered. Discovery does not read log contents and does not follow symlinks.
+`--discover-interval 0s` checks once at startup. Discovery only runs when
+`log_directories` is set.
 
 ## Lab
 
@@ -206,14 +235,14 @@ These are not extra packages. The service will not report devices correctly with
 - An existing syslog collector on this host, usually `rsyslog`, already receiving the devices. This package does not install a listener, open UDP or TCP 514, or change collector rules.
 - One regular log file per source, inside a directory listed in `log_directories`. A shared log file cannot show which device wrote last. The optional example is [`examples/rsyslog-per-device.conf`](examples/rsyslog-per-device.conf).
 - Read permission on those files and on their parent directories. The packaged unit runs as root and keeps only `CAP_DAC_READ_SEARCH`, which is what lets it stat root-owned logs.
-- Write permission on `/var/lib/syslog-gomonitor`. systemd creates that directory for the size snapshot. The rest of the filesystem is read-only for the service.
+- Write permission on `/var/lib/syslog-gomonitor` and on `/etc/syslog-gomonitor`. The size snapshot lives in the first. Adopt and ignore replace `devices.json` in the second. The rest of the filesystem is read-only for the service.
 - `127.0.0.1:8080` free. The unit binds only that address. View it from another machine with an SSH tunnel rather than by publishing the port.
 - A JSON inventory at `/etc/syslog-gomonitor/devices.json`. `install.sh` creates one from the directories you enter. Device names, source IPs, and log paths must be unique.
 - Disk for the per-source files and their rotations. Stored size is the current on-disk total, measured about once an hour.
 - A clock within about a minute of true time. A modification time more than 60 seconds in the future is reported as **Unknown**.
 - On an SELinux-enforcing host, normal labels on the installed paths. `restorecon` from `policycoreutils` can apply them. The install script does not run it.
 
-The dashboard's first view is plain HTML. Live refresh, search, and the summary-card filters use JavaScript in the browser. Reloading the page works when JavaScript is disabled.
+The dashboard's first view is plain HTML. Live refresh, search, the summary-card filters, and adopt, ignore, and stop ignoring use JavaScript in the browser. Reloading the page shows the latest device table when JavaScript is disabled. Adopt, ignore, and stop ignoring run from that page script.
 
 The container lab and the single-process demo are not part of the production install. The lab needs Docker Engine with Compose v2. The demo needs Go 1.22 or newer on a workstation.
 
@@ -258,7 +287,8 @@ devices or change a syslog service.
 
 | Package | Role |
 | --- | --- |
-| `internal/inventory` | Parse and validate the JSON device list |
+| `internal/inventory` | Parse and validate the JSON device list, and append adopted or ignored sources |
+| `internal/discover` | List untracked files in the watched directories |
 | `internal/activity` | Stat the current log, without reading it or following symlinks |
 | `internal/session` | Established TCP sessions from `ss` |
 | `internal/status` | Combine freshness and connection into one outcome |

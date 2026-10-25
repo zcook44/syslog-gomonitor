@@ -18,13 +18,34 @@ import (
 
 // Snapshot is safe to publish. It contains metadata, not log contents.
 type Snapshot struct {
-	GeneratedAt           time.Time  `json:"generated_at"`
-	MonitorOverdueSeconds int        `json:"monitor_overdue_seconds"`
-	PollIntervalSeconds   int        `json:"poll_interval_seconds"`
-	SizeMeasuredAt        *time.Time `json:"size_measured_at"`
-	SizeIntervalSeconds   int        `json:"size_interval_seconds"`
-	Devices               []Device   `json:"devices"`
-	Summary               Summary    `json:"summary"`
+	GeneratedAt           time.Time   `json:"generated_at"`
+	MonitorOverdueSeconds int         `json:"monitor_overdue_seconds"`
+	PollIntervalSeconds   int         `json:"poll_interval_seconds"`
+	SizeMeasuredAt        *time.Time  `json:"size_measured_at"`
+	SizeIntervalSeconds   int         `json:"size_interval_seconds"`
+	Devices               []Device    `json:"devices"`
+	Summary               Summary     `json:"summary"`
+	WatchedDirectories    []string    `json:"watched_directories,omitempty"`
+	DiscoverNote          string      `json:"discover_note,omitempty"`
+	Candidates            []Candidate `json:"candidates,omitempty"`
+	Ignored               []Ignored   `json:"ignored,omitempty"`
+}
+
+// Candidate is a file in a watched directory that is not an inventory device
+// and has not been ignored. It is metadata only.
+type Candidate struct {
+	LogPath       string     `json:"log_path"`
+	SourceIP      string     `json:"source_ip,omitempty"`
+	SuggestedName string     `json:"suggested_name"`
+	LastWrite     *time.Time `json:"last_write,omitempty"`
+	ActiveBytes   int64      `json:"active_bytes"`
+	Detail        string     `json:"detail"`
+}
+
+// Ignored is a source the operator chose not to track.
+type Ignored struct {
+	LogPath  string `json:"log_path"`
+	SourceIP string `json:"source_ip,omitempty"`
 }
 
 // Device is one inventory row plus the latest activity and size measurement.
