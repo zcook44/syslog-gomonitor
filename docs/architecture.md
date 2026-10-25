@@ -40,6 +40,7 @@ One long-running process does both jobs. They do not share a loop.
 | Loop | Default | What it touches | What it avoids |
 | --- | --- | --- | --- |
 | Activity | Every 5 seconds (`--poll`) | `Lstat` of each current log, and one `ss` call if any device is TCP | File contents, rotations, directory walks |
+| Discovery | About every 30 seconds (`--discover-interval`) | One listing of each `log_directories` entry, then `Lstat` of a new active log | File contents, symlinks, rotations inside an address directory |
 | Stored size | About every 1 hour (`--size-interval`) | One directory listing per log directory, then `Lstat` of matching names | Decompressing archives, following symlinks, reading bytes |
 
 The size pass also runs at startup when `sizes.json` is missing or older than
@@ -113,15 +114,43 @@ stored size as pending.
 
 ## What the process keeps in memory
 
-The engine holds the validated inventory, the latest size measurements, and
-the latest snapshot. Each poll builds a new snapshot and notifies dashboard
-subscribers. A slow browser cannot block the poll: each subscriber has a
-one-slot buffer and keeps only the newest unread snapshot.
+The engine holds the validated inventory, the latest size measurements, the
+latest untracked-file list, and the latest snapshot. Each poll builds a new
+snapshot and notifies dashboard subscribers. A slow browser cannot block the
+poll: each subscriber has a one-slot buffer and keeps only the newest unread
+snapshot.
 
 If `devices.json` changes, the next poll reloads it. A file that does not
 validate is logged and the previous inventory stays in service. A successful
 reload runs a size measurement when the in-process interval is enabled, so a
 newly added device does not wait until the next hour for a stored total.
+Adopting or ignoring from the dashboard writes the file and reloads it
+immediately.
+
+## Files that are not in the inventory
+
+Discovery looks at `log_directories` only. It does not run when that list is
+empty. For each real directory (a symlink is skipped and not followed) it
+lists the entries once:
+
+- A child directory contributes one candidate when it contains the active log,
+  `syslog.log` unless `log_path_template` names a different file after
+  `{source_ip}/`. The address is the directory name when that name is an IP.
+- A regular file directly in the watched directory is a candidate when it is
+  not a rotation (`.1`, `.gz`) or an rsyslog state file (`.offset`, `.state`).
+- A path or source address already in `devices` or `ignored` is left out.
+
+The active-file size and modification time come from `Lstat`. The file is not
+opened. At most 100 candidates are shown, and at most 4096 names in one
+directory are examined. The page says when either cap is hit. A directory
+with a very large number of names still has to be listed.
+
+Adopt appends one device to `devices.json` and validates the whole file before
+replacing it. The new object omits `log_path` when the template already
+resolves to that file, and uses `log_directory` when the file is
+`{watched}/{source_ip}/syslog.log` in another watched tree. Ignore appends to
+the `ignored` array. A per-address ignore stores `source_ip`, so that sender
+stays hidden if the file is recreated. Stop ignoring deletes that array entry.
 
 ## HTTP surface
 
@@ -133,21 +162,34 @@ The listener defaults to `127.0.0.1:8080`. Nothing else is bound.
 | `GET /api/status` | The same snapshot as JSON. |
 | `GET /events` | Server-Sent Events. Each event is the board markup and the check time. |
 | `GET /healthz` | `ok` |
+| `POST /api/adopt` | Append one discovered file to the inventory. JSON body: `name`, `log_path`, optional `source_ip`, `protocol`, and `tcp_port`. |
+| `POST /api/ignore` | Append that file to `ignored`. JSON body: `log_path`. |
+| `POST /api/unignore` | Remove an ignored path. JSON body: `log_path`. |
 
-Search and the summary-card filters run in the browser. They hide rows in the
-page that was already delivered. They do not change the snapshot, the inventory,
-or what `/api/status` returns. Choosing a card that is already selected clears
-that filter.
+Search and the device-status cards run in the browser. They hide rows in the
+page that was already delivered. **Not in inventory** and **Ignored** also run
+in the browser: each one hides the device table and shows the matching list
+from the snapshot already delivered. Choosing a card that is already selected
+clears that view. None of these cards change the snapshot or the inventory.
+`/api/status` changes after a successful adopt, ignore, or stop ignoring,
+because those requests rewrite `devices.json` and the process reloads it.
 
 The page tells the operator the monitor is overdue when the snapshot is older
 than `monitor_overdue_seconds` (default 180). That is a freshness check on the
 monitor itself, not on a device.
 
+The three POST paths accept a JSON body from the dashboard only. The request
+must send `X-Requested-With: syslog-gomonitor`. A `Sec-Fetch-Site` header other
+than `same-origin`, or an `Origin` whose host is not this listener, is
+refused. The path has to be a regular file inside `log_directories` and has to
+be one discovery would offer. A failed check does not change `devices.json`.
+
 ## Modules
 
 | Package | Responsibility |
 | --- | --- |
-| `internal/inventory` | Load JSON, reject duplicates and unsafe paths, resolve `{source_ip}`, and save `log_directories` |
+| `internal/inventory` | Load JSON, reject duplicates and unsafe paths, resolve `{source_ip}`, save `log_directories`, and append adopted or ignored sources |
+| `internal/discover` | List untracked regular files in `log_directories` without reading them |
 | `internal/activity` | Classify the current log from `Lstat` |
 | `internal/session` | Parse `ss -H -t -n state established` |
 | `internal/status` | Combine the two signals |
@@ -163,7 +205,7 @@ monitor itself, not on a device.
 
 | Path | Written by | Survives restart |
 | --- | --- | --- |
-| `/etc/syslog-gomonitor/devices.json` | The operator, and `install.sh` / `configure` for `log_directories` | Yes. Device entries are kept. `log_directories` is written at install and can be edited in this file. |
+| `/etc/syslog-gomonitor/devices.json` | The operator, `install.sh` / `configure` for `log_directories`, and the dashboard for adopt, ignore, and stop ignoring | Yes. Existing device entries are kept. `log_directories` is written at install. `ignored` records sources the page should not offer. |
 | `/var/lib/syslog-gomonitor/sizes.json` | The hourly measurement | Yes. Activity history is not stored. |
 | Dashboard | Not written | The page is generated from memory on each request. |
 

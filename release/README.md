@@ -8,7 +8,10 @@ The program's Go code uses only the standard library.
 
 `install.sh` asks for the syslog directories to watch and stores them in
 `devices.json` as `log_directories`. Pass `--log-dir` once per directory when
-there is no terminal.
+there is no terminal. The packaged service unit allows the process to replace
+that inventory file when an operator adopts or ignores a source from the
+dashboard. The rest of the filesystem stays read-only, apart from the size
+snapshot under `/var/lib/syslog-gomonitor`.
 
 | File | Role |
 | --- | --- |

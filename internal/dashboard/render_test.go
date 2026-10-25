@@ -61,6 +61,45 @@ func TestPageEscapesInventory(t *testing.T) {
 	if !strings.Contains(body, `data-status="healthy"`) || !strings.Contains(body, "192.0.2.10") {
 		t.Fatal("row search data missing")
 	}
+	if strings.Contains(body, `data-view="candidates"`) {
+		t.Fatal("adoption cards shown without watched directories")
+	}
+
+	when = when.Add(time.Second)
+	active = 40
+	snap.WatchedDirectories = []string{"/var/log/remote"}
+	snap.Candidates = []snapshot.Candidate{{
+		LogPath:       "/var/log/host&log/<script>.log",
+		SourceIP:      "192.0.2.50",
+		SuggestedName: `<script>alert("adopt")</script>`,
+		LastWrite:     &when,
+		ActiveBytes:   active,
+		Detail:        "Per-address log is not in the inventory.",
+	}}
+	snap.Ignored = []snapshot.Ignored{{LogPath: "/var/log/remote/noise&1.log"}}
+	page, err = Page(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = string(page)
+	if strings.Contains(body, "<script>alert") || strings.Contains(body, "host&log") {
+		t.Fatal("candidate text was not escaped")
+	}
+	if !strings.Contains(body, "Adopt") || !strings.Contains(body, "Ignore") || !strings.Contains(body, "Stop ignoring") {
+		t.Fatal("adoption actions missing")
+	}
+	if !strings.Contains(body, `data-view="candidates"`) || !strings.Contains(body, `data-view="ignored"`) {
+		t.Fatal("adoption cards missing")
+	}
+	if !strings.Contains(body, `data-view-panel="candidates" hidden`) || !strings.Contains(body, `data-view-panel="ignored" hidden`) {
+		t.Fatal("adoption panels should stay hidden until a card is selected")
+	}
+	if !strings.Contains(body, `class="card attention" data-view="candidates"`) {
+		t.Fatal("untracked count should use the attention card when files are waiting")
+	}
+	if !strings.Contains(body, "host&amp;log") || !strings.Contains(body, "noise&amp;1.log") {
+		t.Fatal("candidate paths were not escaped")
+	}
 	event, err := Event(snap)
 	if err != nil {
 		t.Fatal(err)

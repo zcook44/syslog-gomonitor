@@ -7,12 +7,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"syslog-gomonitor/internal/dashboard"
 	"syslog-gomonitor/internal/engine"
+	"syslog-gomonitor/internal/inventory"
 )
 
 // Listen serves the dashboard until ctx is cancelled.
@@ -52,12 +56,17 @@ func Handler(eng *engine.Engine) http.Handler {
 	mux.HandleFunc("/events", h.events)
 	mux.HandleFunc("/", h.page)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secureHeaders(w)
+		switch r.URL.Path {
+		case "/api/adopt", "/api/ignore", "/api/unignore":
+			h.mutation(w, r)
+			return
+		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		secureHeaders(w)
 		mux.ServeHTTP(w, r)
 	})
 }
@@ -90,6 +99,123 @@ func (h *handler) api(w http.ResponseWriter, r *http.Request) {
 	if err := enc.Encode(h.eng.Latest()); err != nil {
 		http.Error(w, "status encoding failed", http.StatusInternalServerError)
 	}
+}
+
+func (h *handler) mutation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeAPI(w, http.StatusMethodNotAllowed, apiError("Method not allowed."))
+		return
+	}
+	if !sameOrigin(r) {
+		writeAPI(w, http.StatusForbidden, apiError("Cross-site request refused."))
+		return
+	}
+	switch r.URL.Path {
+	case "/api/adopt":
+		var body struct {
+			Name     string `json:"name"`
+			SourceIP string `json:"source_ip"`
+			Protocol string `json:"protocol"`
+			TCPPort  *int   `json:"tcp_port"`
+			LogPath  string `json:"log_path"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		in := inventory.Adoption{
+			Name:     body.Name,
+			SourceIP: body.SourceIP,
+			Protocol: body.Protocol,
+			LogPath:  body.LogPath,
+		}
+		if body.TCPPort != nil {
+			in.TCPPort = *body.TCPPort
+		}
+		h.finish(w, r, h.eng.Adopt(r.Context(), in))
+	case "/api/ignore":
+		var body struct {
+			LogPath string `json:"log_path"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		h.finish(w, r, h.eng.Ignore(r.Context(), body.LogPath))
+	case "/api/unignore":
+		var body struct {
+			LogPath string `json:"log_path"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		h.finish(w, r, h.eng.Unignore(r.Context(), body.LogPath))
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (h *handler) finish(w http.ResponseWriter, r *http.Request, err error) {
+	if err == nil {
+		writeAPI(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+	var user *inventory.UserError
+	if errors.As(err, &user) {
+		writeAPI(w, http.StatusBadRequest, apiError(user.Message))
+		return
+	}
+	writeAPI(w, http.StatusInternalServerError, apiError("The inventory could not be updated."))
+}
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if !strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
+		writeAPI(w, http.StatusUnsupportedMediaType, apiError("Send a JSON request."))
+		return false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 8192)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		writeAPI(w, http.StatusBadRequest, apiError("The request could not be read."))
+		return false
+	}
+	var extra json.RawMessage
+	if err := dec.Decode(&extra); err != io.EOF {
+		writeAPI(w, http.StatusBadRequest, apiError("The request must be a single JSON object."))
+		return false
+	}
+	return true
+}
+
+func sameOrigin(r *http.Request) bool {
+	if r.Header.Get("X-Requested-With") != "syslog-gomonitor" {
+		return false
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
+		return false
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return strings.EqualFold(parsed.Host, r.Host)
+}
+
+func apiError(message string) map[string]string {
+	return map[string]string{"error": message}
+}
+
+func writeAPI(w http.ResponseWriter, status int, body any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(true)
+	_ = enc.Encode(body)
 }
 
 func (h *handler) health(w http.ResponseWriter, r *http.Request) {

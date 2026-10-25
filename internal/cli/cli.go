@@ -97,6 +97,7 @@ func serve(args []string) error {
 	listen := fs.String("listen", "127.0.0.1:8080", "dashboard address (host:port)")
 	pollStr := fs.String("poll", "5s", "how often to recheck log activity and TCP sessions")
 	sizeStr := fs.String("size-interval", "1h", "how often to measure stored log size; 0s leaves that to the size command")
+	discoverStr := fs.String("discover-interval", "30s", "how often to look for untracked files in log directories; 0s checks once at startup")
 	if err := parseArgs(fs, args); err != nil {
 		return err
 	}
@@ -108,6 +109,13 @@ func serve(args []string) error {
 	if err != nil {
 		return err
 	}
+	discoverEvery, err := parseDuration("discover-interval", *discoverStr, 0)
+	if err != nil {
+		return err
+	}
+	if discoverEvery > 0 && discoverEvery < time.Second {
+		return fmt.Errorf("--discover-interval must be 0s or at least 1s")
+	}
 	if _, _, err := net.SplitHostPort(*listen); err != nil {
 		return fmt.Errorf("--listen must be host:port")
 	}
@@ -116,15 +124,16 @@ func serve(args []string) error {
 		return err
 	}
 	eng := engine.New(inv, engine.Options{
-		ConfigPath:   *config,
-		StatePath:    *state,
-		PollInterval: poll,
-		SizeInterval: sizeEvery,
+		ConfigPath:       *config,
+		StatePath:        *state,
+		PollInterval:     poll,
+		SizeInterval:     sizeEvery,
+		DiscoverInterval: discoverEvery,
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	eng.Prime(ctx)
-	slog.Info("serving", "addr", *listen, "devices", len(inv.Devices), "poll", poll.String(), "size_interval", sizeEvery.String())
+	slog.Info("serving", "addr", *listen, "devices", len(inv.Devices), "poll", poll.String(), "size_interval", sizeEvery.String(), "discover_interval", discoverEvery.String())
 	go eng.Run(ctx)
 	return server.Listen(ctx, *listen, eng)
 }
@@ -164,6 +173,7 @@ func check(args []string) error {
 		return err
 	}
 	ctx := context.Background()
+	eng.RefreshCandidates()
 	if *scan {
 		if err := eng.ScanSizes(ctx); err != nil {
 			return err
@@ -191,6 +201,16 @@ func validate(args []string) error {
 		return err
 	}
 	fmt.Printf("Valid inventory: %d devices\n", len(inv.Devices))
+	if len(inv.Ignored) > 0 {
+		fmt.Printf("Ignored: %d\n", len(inv.Ignored))
+		for _, item := range inv.Ignored {
+			if item.SourceIP != "" {
+				fmt.Printf("  %s  %s\n", item.SourceIP, item.LogPath)
+			} else {
+				fmt.Printf("  %s\n", item.LogPath)
+			}
+		}
+	}
 	if len(inv.LogDirectories) > 0 {
 		fmt.Println("Log directories:")
 		for _, dir := range inv.LogDirectories {
@@ -280,10 +300,11 @@ func runDemo(args []string) error {
 	defer sc.Close()
 
 	eng := engine.New(sc.Inv, engine.Options{
-		ConfigPath:   sc.ConfigPath,
-		StatePath:    filepath.Join(sc.Root, "sizes.json"),
-		PollInterval: poll,
-		SizeInterval: time.Hour,
+		ConfigPath:       sc.ConfigPath,
+		StatePath:        filepath.Join(sc.Root, "sizes.json"),
+		PollInterval:     poll,
+		SizeInterval:     time.Hour,
+		DiscoverInterval: 30 * time.Second,
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

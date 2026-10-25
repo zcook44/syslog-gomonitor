@@ -44,14 +44,39 @@ type pageData struct {
 }
 
 type boardModel struct {
-	Checked   string
-	Total     int
-	Healthy   int
-	Attention int
-	Unknown   int
-	Stored    string
-	SizeNote  string
-	Rows      []rowView
+	Checked        string
+	Total          int
+	Healthy        int
+	Attention      int
+	Unknown        int
+	Stored         string
+	SizeNote       string
+	Rows           []rowView
+	ShowAdoption   bool
+	CandidateAlert bool
+	DiscoverNote   string
+	Revision       string
+	CandidateCount int
+	IgnoredCount   int
+	Candidates     []candidateView
+	Ignored        []ignoredView
+}
+
+type candidateView struct {
+	Path        string
+	Source      string
+	Name        string
+	Detail      string
+	LastTime    string
+	LastDay     string
+	Active      string
+	ActiveTitle string
+	IPLocked    bool
+}
+
+type ignoredView struct {
+	Path   string
+	Source string
 }
 
 type rowView struct {
@@ -155,15 +180,50 @@ func model(snap snapshot.Snapshot) boardModel {
 			}, " ")),
 		})
 	}
+	candidates := make([]candidateView, 0, len(snap.Candidates))
+	var revision strings.Builder
+	for _, item := range snap.Candidates {
+		active, activeTitle := activeView(&item.ActiveBytes)
+		lastTime, lastDay := clockParts(item.LastWrite)
+		candidates = append(candidates, candidateView{
+			Path:        item.LogPath,
+			Source:      item.SourceIP,
+			Name:        item.SuggestedName,
+			Detail:      item.Detail,
+			LastTime:    lastTime,
+			LastDay:     lastDay,
+			Active:      active,
+			ActiveTitle: activeTitle,
+			IPLocked:    item.SourceIP != "",
+		})
+		revision.WriteString(item.LogPath)
+		revision.WriteByte('\n')
+	}
+	ignored := make([]ignoredView, 0, len(snap.Ignored))
+	for _, item := range snap.Ignored {
+		ignored = append(ignored, ignoredView{Path: item.LogPath, Source: item.SourceIP})
+		revision.WriteString("ignored ")
+		revision.WriteString(item.LogPath)
+		revision.WriteByte('\n')
+	}
+	watching := len(snap.WatchedDirectories) > 0
 	return boardModel{
-		Checked:   "Last checked " + clock(&snap.GeneratedAt),
-		Total:     snap.Summary.Total,
-		Healthy:   snap.Summary.Healthy,
-		Attention: snap.Summary.Attention,
-		Unknown:   snap.Summary.Unknown,
-		Stored:    storedCard(snap.Summary),
-		SizeNote:  sizeNote(snap),
-		Rows:      rows,
+		Checked:        "Last checked " + clock(&snap.GeneratedAt),
+		Total:          snap.Summary.Total,
+		Healthy:        snap.Summary.Healthy,
+		Attention:      snap.Summary.Attention,
+		Unknown:        snap.Summary.Unknown,
+		Stored:         storedCard(snap.Summary),
+		SizeNote:       sizeNote(snap),
+		Rows:           rows,
+		ShowAdoption:   watching || len(candidates) > 0 || len(ignored) > 0 || snap.DiscoverNote != "",
+		CandidateAlert: len(candidates) > 0 || snap.DiscoverNote != "",
+		DiscoverNote:   snap.DiscoverNote,
+		Revision:       revision.String(),
+		CandidateCount: len(candidates),
+		IgnoredCount:   len(ignored),
+		Candidates:     candidates,
+		Ignored:        ignored,
 	}
 }
 

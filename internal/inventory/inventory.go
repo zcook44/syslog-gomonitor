@@ -32,11 +32,23 @@ type Device struct {
 	StaleAfterSeconds int
 }
 
+// Ignored is a file in a watched directory that should not be offered for
+// adoption and should not become a device. SourceIP is set when the path
+// names an address, so that sender stays hidden if the file is recreated.
+type Ignored struct {
+	LogPath  string
+	SourceIP string
+}
+
 // Inventory is the validated device list for this server.
 type Inventory struct {
 	Devices               []Device
+	Ignored               []Ignored
 	LogDirectories        []string
+	LogPathTemplate       string
 	MonitorOverdueSeconds int
+	StaleAfterSeconds     int
+	TCPPort               int
 }
 
 // NeedsTCP reports whether any device asks for an established-session check.
@@ -50,12 +62,18 @@ func (inv Inventory) NeedsTCP() bool {
 }
 
 type document struct {
-	StaleAfterSeconds     *int        `json:"stale_after_seconds"`
-	MonitorOverdueSeconds *int        `json:"monitor_overdue_seconds"`
-	LogDirectories        []string    `json:"log_directories"`
-	LogPathTemplate       *string     `json:"log_path_template"`
-	TCPPort               *int        `json:"tcp_port"`
-	Devices               []deviceDoc `json:"devices"`
+	StaleAfterSeconds     *int         `json:"stale_after_seconds"`
+	MonitorOverdueSeconds *int         `json:"monitor_overdue_seconds"`
+	LogDirectories        []string     `json:"log_directories"`
+	LogPathTemplate       *string      `json:"log_path_template"`
+	TCPPort               *int         `json:"tcp_port"`
+	Devices               []deviceDoc  `json:"devices"`
+	Ignored               []ignoredDoc `json:"ignored"`
+}
+
+type ignoredDoc struct {
+	LogPath  string  `json:"log_path"`
+	SourceIP *string `json:"source_ip"`
 }
 
 type deviceDoc struct {
@@ -256,10 +274,19 @@ func (doc document) resolve() (Inventory, error) {
 		})
 	}
 
+	ignored, err := resolveIgnored(doc.Ignored, directories, resolved)
+	if err != nil {
+		return Inventory{}, err
+	}
+
 	return Inventory{
 		Devices:               resolved,
+		Ignored:               ignored,
 		LogDirectories:        directories,
+		LogPathTemplate:       template,
 		MonitorOverdueSeconds: overdue,
+		StaleAfterSeconds:     staleAfter,
+		TCPPort:               defaultPort,
 	}, nil
 }
 
