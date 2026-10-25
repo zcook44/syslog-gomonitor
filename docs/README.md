@@ -18,6 +18,7 @@ offered again.
 | Document | What it covers |
 | --- | --- |
 | [Architecture and data flow](architecture.md) | How a message, a status check, discovery of untracked files, and a size measurement move through the system |
+| [Data flow for the team](data-flow.md) | The same paths as the data-flow canvas: collector, the three loops, adopt and ignore, status, and HTTP |
 | [Inventory and log files](inventory-and-logs.md) | The JSON schema, including ignored sources, path rules, and which files count toward stored size |
 | [Install](install.md) | Building the offline package and installing it on a production syslog server |
 | [Operations](operations.md) | The dashboard, commands, status meanings, and troubleshooting |
