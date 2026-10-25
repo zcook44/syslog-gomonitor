@@ -49,7 +49,10 @@ chmod 0644 "$pkg/VERSION" "$pkg/config/devices.example.json" \
 
 rm -rf "$release_dir/$name" "$release_dir/$name.tar.gz" "$release_dir/$name.tar.gz.sha256"
 tar -C "$stage" -czf "$release_dir/$name.tar.gz" "$name"
-sha256sum "$release_dir/$name.tar.gz" > "$release_dir/$name.tar.gz.sha256"
+(
+  cd "$release_dir"
+  sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+)
 
 echo "package: $release_dir/$name.tar.gz"
 cat "$release_dir/$name.tar.gz.sha256"

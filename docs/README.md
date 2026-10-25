@@ -1,6 +1,6 @@
 # syslog-gomonitor
 
-Version 1.0.0.
+Version 1.1.0.
 
 `syslog-gomonitor` reports whether the devices that should be sending syslog
 to **this server** are still doing so. It reads a JSON inventory, stats each

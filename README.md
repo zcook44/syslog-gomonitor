@@ -1,6 +1,6 @@
 # Syslog source monitor (Go)
 
-Version 1.0.0.
+Version 1.1.0.
 
 `syslog-gomonitor` watches the devices that are supposed to be reporting to
 **this** syslog server. It reads a JSON inventory, checks each device's own log
@@ -111,9 +111,8 @@ offered. Discovery does not read log contents and does not follow symlinks.
 
 ## Lab
 
-The container lab is the place to try monitor changes, starting from this
-1.0.0 tree and continuing through later releases. It runs rsyslog plus this
-source tree, and example containers send syslog at that collector. Open
+The container lab is the place to try monitor changes. It runs rsyslog plus
+this source tree, and example containers send syslog at that collector. Open
 <http://127.0.0.1:18080/>. Directions and the fourteen example rows are in
 [lab/README.md](lab/README.md).
 
@@ -197,7 +196,7 @@ loopback unless the host has its own access control.
 
 ## Requirements
 
-The 1.0.0 production package is a static `linux/amd64` binary. The syslog
+The 1.1.0 production package is a static `linux/amd64` binary. The syslog
 server does not need Go, a C library, Python, or a web server. The install
 script does not download packages.
 
@@ -210,7 +209,7 @@ Needed only to create the tarball. The syslog server does not need any of these.
 | Go 1.22 or newer | `golang` | `release/build.sh` compiles the binary. CGO is disabled, so a C compiler is not required. |
 | `file` | `file` | The build refuses a binary that is not statically linked. |
 | `sha256sum` | `coreutils` | Checksum of the tarball and of the binary inside it. |
-| `tar` and `gzip` | `tar`, `gzip` | Writes `release/syslog-gomonitor-1.0.0-linux-amd64.tar.gz`. |
+| `tar` and `gzip` | `tar`, `gzip` | Writes `release/syslog-gomonitor-1.1.0-linux-amd64.tar.gz`. |
 | Bash | `bash` | `release/build.sh`. |
 
 ### Syslog server packages
@@ -248,16 +247,16 @@ The container lab and the single-process demo are not part of the production ins
 
 ## Install on the syslog server
 
-Version 1.0.0 is the offline tarball built by `./release/build.sh`. Full steps,
+Version 1.1.0 is the offline tarball built by `./release/build.sh`. Full steps,
 including the directory prompt and upgrades, are in
 [docs/install.md](docs/install.md).
 
 ```bash
 ./release/build.sh
-# copy release/syslog-gomonitor-1.0.0-linux-amd64.tar.gz and the .sha256 file
-sha256sum -c syslog-gomonitor-1.0.0-linux-amd64.tar.gz.sha256
-tar -xzf syslog-gomonitor-1.0.0-linux-amd64.tar.gz
-cd syslog-gomonitor-1.0.0-linux-amd64
+# copy release/syslog-gomonitor-1.1.0-linux-amd64.tar.gz and the .sha256 file
+sha256sum -c syslog-gomonitor-1.1.0-linux-amd64.tar.gz.sha256
+tar -xzf syslog-gomonitor-1.1.0-linux-amd64.tar.gz
+cd syslog-gomonitor-1.1.0-linux-amd64
 sudo ./install.sh --log-dir /var/log/remote
 ```
 
@@ -267,6 +266,7 @@ requiring `--log-dir`. The answers are stored in
 
 The service runs as root so it can stat root-owned logs, binds only to
 loopback, and can write its size snapshot under `/var/lib/syslog-gomonitor`.
+Adopt and ignore also replace `/etc/syslog-gomonitor/devices.json`.
 `journalctl -u syslog-gomonitor.service` shows startup and each hourly
 measurement. Missing logs stay on the page; they do not stop the service.
 

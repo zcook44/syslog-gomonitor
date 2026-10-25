@@ -18,11 +18,11 @@ cd syslog-gomonitor
 ./release/build.sh
 ```
 
-The script writes the version 1.0.0 package:
+The script writes the version 1.1.0 package:
 
 ```text
-release/syslog-gomonitor-1.0.0-linux-amd64.tar.gz
-release/syslog-gomonitor-1.0.0-linux-amd64.tar.gz.sha256
+release/syslog-gomonitor-1.1.0-linux-amd64.tar.gz
+release/syslog-gomonitor-1.1.0-linux-amd64.tar.gz.sha256
 ```
 
 The version string comes from [`release/VERSION`](../release/VERSION).
@@ -33,7 +33,7 @@ Confirm the checksum before the file leaves the build machine:
 
 ```bash
 cd release
-sha256sum -c syslog-gomonitor-1.0.0-linux-amd64.tar.gz.sha256
+sha256sum -c syslog-gomonitor-1.1.0-linux-amd64.tar.gz.sha256
 ```
 
 ## 2. Move it to the syslog server
@@ -42,9 +42,9 @@ Copy the `.tar.gz` and the `.sha256` file by the site's approved offline
 method. On the server:
 
 ```bash
-sha256sum -c syslog-gomonitor-1.0.0-linux-amd64.tar.gz.sha256
-tar -xzf syslog-gomonitor-1.0.0-linux-amd64.tar.gz
-cd syslog-gomonitor-1.0.0-linux-amd64
+sha256sum -c syslog-gomonitor-1.1.0-linux-amd64.tar.gz.sha256
+tar -xzf syslog-gomonitor-1.1.0-linux-amd64.tar.gz
+cd syslog-gomonitor-1.1.0-linux-amd64
 sha256sum -c SHA256SUMS
 ```
 
@@ -74,11 +74,13 @@ What that does:
 
 `--no-start` stops after the files and `daemon-reload`.
 
-The service listens on `127.0.0.1:8080`, runs as root so it can stat
-root-owned logs, and may write only its size snapshot. systemd creates
-`/var/lib/syslog-gomonitor` for that file. The unit keeps the rest of the
-filesystem read-only and grants `CAP_DAC_READ_SEARCH` so those logs can be
-stated. It does not open a syslog port.
+The service listens on `127.0.0.1:8080` and runs as root so it can stat
+root-owned logs. It may write its size snapshot under
+`/var/lib/syslog-gomonitor`, which systemd creates, and it may replace
+`/etc/syslog-gomonitor/devices.json` when an operator adopts or ignores a
+source. The unit keeps the rest of the filesystem read-only and grants
+`CAP_DAC_READ_SEARCH` so those logs can be stated. It does not open a syslog
+port.
 
 If `restorecon` is available on the host, label the installed paths the way
 the rest of the system is labeled. The script does not call it, because a

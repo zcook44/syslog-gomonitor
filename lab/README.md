@@ -3,7 +3,7 @@
 This is the integration lab for syslog-gomonitor. It stands up a Rocky Linux
 collector running rsyslog and the monitor from the current source tree, plus
 example containers that send syslog at that collector. Use it to check the
-dashboard while changing the monitor for 1.1 and later.
+dashboard while changing the monitor.
 
 The page is published only on the host loopback:
 

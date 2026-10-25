@@ -1,6 +1,6 @@
 # Offline release
 
-Version 1.0.0 of syslog-gomonitor. This directory builds a package for a
+Version 1.1.0 of syslog-gomonitor. This directory builds a package for a
 syslog server that cannot download software. The tarball contains a statically
 linked `linux/amd64` binary, the systemd units, the example inventory, and the
 install script. It does not contain a Go toolchain or third-party modules.

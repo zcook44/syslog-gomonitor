@@ -160,7 +160,7 @@ enough that you do not want the walk inside the process serving the page.
 ## Lab
 
 The container lab in [../lab/README.md](../lab/README.md) is the test bed for
-changes after 1.0.0. A collector container runs rsyslog and a monitor built
+monitor changes. A collector container runs rsyslog and a monitor built
 from the working tree. More than ten example containers send syslog, and the
 collector pins a few files so the page also shows missing, stale, empty,
 symlink, and future-mtime rows. The dashboard is at `http://127.0.0.1:18080/`.
