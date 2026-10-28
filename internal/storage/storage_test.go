@@ -126,6 +126,24 @@ func TestScanRefusesSymlinkedDirectory(t *testing.T) {
 	}
 }
 
+func TestScanSumsEveryDayOfADatedName(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "edge-router-01-20261027-syslog.log"), 100)
+	mustWrite(t, filepath.Join(dir, "edge-router-01-20261028-syslog.log"), 50)
+	mustWrite(t, filepath.Join(dir, "edge-router-01-20261027-syslog.log.1"), 10)
+	mustWrite(t, filepath.Join(dir, "edge-router-01-20261028-syslog.log.gz"), 5)
+	mustWrite(t, filepath.Join(dir, "edge-router-01-20261028-syslog.log.offset"), 32)
+	mustWrite(t, filepath.Join(dir, "core-switch-01-20261028-syslog.log"), 1000)
+	got := Scan([]inventory.Device{{
+		Name: "edge", SourceIP: "192.0.2.10",
+		LogPath: filepath.Join(dir, "edge-router-01-20261027-syslog.log"),
+	}})
+	edge := got["192.0.2.10"]
+	if edge.Bytes != 165 || edge.Files != 4 {
+		t.Fatalf("dated measurement %+v", edge)
+	}
+}
+
 func mustWrite(t *testing.T, path string, n int) {
 	t.Helper()
 	body := make([]byte, n)

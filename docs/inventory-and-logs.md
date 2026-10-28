@@ -87,6 +87,7 @@ the handshake.
 
 The dashboard writes these entries from **Ignore**. A per-address file stores
 `source_ip`, and discovery then hides every untracked file for that address.
+Ignoring one day of a dated name also hides later days of that same name.
 **Stop ignoring** removes the entry. An entry that names a device path or a
 device address is rejected, so a source is not both tracked and ignored.
 `validate` prints the list. Removing `log_directories` does not keep an
@@ -121,13 +122,21 @@ is valid again.
 
 The activity check uses the modification time of one file. A shared log cannot
 say which device wrote last, so every device needs its own path. The usual
-layout is a directory per source:
+layout is a directory per source and a stable active name:
 
 ```text
 /var/log/remote/192.0.2.10/syslog.log
 /var/log/remote/192.0.2.10/syslog.log.1
 /var/log/remote/192.0.2.10/syslog.log-20261022.gz
 ```
+
+A collector that puts the date in the active name is tracked as a series.
+`edge-router-01-20261028-syslog.log` and `edge-router-01-2026-10-28-syslog.log`
+are the two recognized shapes. Adoption stores the newest file of that
+convention. Each poll lists the same directory and stats the file with the
+latest date, so the next day stays on the same device. The hourly total
+includes every day of that series plus rotations of those files. A stable
+name such as `syslog.log` is unchanged: the monitor keeps stating that path.
 
 The optional rsyslog snippet
 [`examples/rsyslog-per-device.conf`](../examples/rsyslog-per-device.conf) adds
@@ -149,6 +158,9 @@ the active file or a rotation of it:
 | `syslog.log.1`, `syslog.log.2.gz` | Yes |
 | `syslog.log-20261022`, `syslog.log-20261022.gz` | Yes |
 | `firewall-01.log.1` when the active file is `firewall-01.log` | Yes |
+| `edge-router-01-20261027-syslog.log` and `edge-router-01-20261028-syslog.log` when the device was adopted from either day | Yes, both days |
+| `edge-router-01-20261028-syslog.log.1` and `edge-router-01-20261028-syslog.log.gz` | Yes |
+| `core-switch-01-20261028-syslog.log` beside an `edge-router-01-…` device | No |
 | `notes.txt`, `other.log` | No |
 | `syslog.log.offset`, `syslog.log.state` | No |
 | A symlink with a matching name | No. The link is not followed. |

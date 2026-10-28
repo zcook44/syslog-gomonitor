@@ -37,8 +37,17 @@ func TestScanFindsNewSwitchAndSkipsNoiseShapes(t *testing.T) {
 	write(filepath.Join(knownDir, "syslog.log.1"), "rotated\n")
 	write(filepath.Join(knownDir, "notes.txt"), "not a source\n")
 	write(filepath.Join(newDir, "syslog.log"), secret+" from the new switch\n")
+	write(filepath.Join(newDir, "messages.log"), secret+" messages\n")
+	write(filepath.Join(newDir, "notes.txt"), "not a log\n")
 	write(filepath.Join(newDir, "syslog.log.1"), "old\n")
+	write(filepath.Join(knownDir, "other.log"), "already tracked address\n")
 	write(filepath.Join(hostDir, "syslog.log"), "hostname layout\n")
+	trackedHost := filepath.Join(remote, "tracked-host")
+	if err := os.MkdirAll(trackedHost, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(trackedHost, "syslog.log"), "already chosen\n")
+	write(filepath.Join(trackedHost, "messages.log"), "leftover convention\n")
 	write(filepath.Join(remote, "noise.log"), "garbage from a bad rule\n")
 	write(filepath.Join(remote, "syslog.log.1"), "orphan rotation\n")
 	write(filepath.Join(remote, "syslog.log.offset"), "state\n")
@@ -57,7 +66,10 @@ func TestScanFindsNewSwitchAndSkipsNoiseShapes(t *testing.T) {
 	inv, err := inventory.Parse([]byte(`{
 		"log_directories": ["` + remote + `"],
 		"log_path_template": "` + remote + `/{source_ip}/syslog.log",
-		"devices": [{"name": "edge", "source_ip": "192.0.2.10", "protocol": "udp"}],
+		"devices": [
+			{"name": "edge", "source_ip": "192.0.2.10", "protocol": "udp"},
+			{"name": "tracked", "source_ip": "192.0.2.60", "protocol": "udp", "log_path": "` + filepath.Join(trackedHost, "syslog.log") + `"}
+		],
 		"ignored": [{"log_path": "` + filepath.Join(remote, "hidden.log") + `"}]
 	}`))
 	if err != nil {
@@ -90,8 +102,20 @@ func TestScanFindsNewSwitchAndSkipsNoiseShapes(t *testing.T) {
 	if !ok || sw.SourceIP != "192.0.2.50" || sw.SuggestedName != "192.0.2.50" {
 		t.Fatalf("new switch %#v", sw)
 	}
-	if !strings.Contains(sw.Detail, "Per-address") || sw.ActiveBytes == 0 {
+	if !strings.Contains(sw.Detail, "Choose which") || sw.ActiveBytes == 0 || len(sw.LogFiles) != 2 {
 		t.Fatalf("switch detail %#v", sw)
+	}
+	if sw.LogFiles[0].Name != "messages.log" || sw.LogFiles[1].Name != "syslog.log" || sw.LogPath != sw.LogFiles[1].Path {
+		t.Fatalf("log choices %#v", sw.LogFiles)
+	}
+	if _, ok := got["192.0.2.50/messages.log"]; ok {
+		t.Fatal("messages.log was a separate card")
+	}
+	if _, ok := got["tracked-host/syslog.log"]; ok || got["tracked-host/messages.log"].LogPath != "" {
+		t.Fatal("tracked directory was offered again")
+	}
+	if _, ok := got["192.0.2.50/notes.txt"]; ok || got["192.0.2.10/other.log"].LogPath != "" {
+		t.Fatalf("non-log or already tracked address listed: %#v", got)
 	}
 	host, ok := got["weird-host/syslog.log"]
 	if !ok || host.SourceIP != "" || host.SuggestedName != "weird-host" {
@@ -106,6 +130,58 @@ func TestScanFindsNewSwitchAndSkipsNoiseShapes(t *testing.T) {
 	}
 	if _, ok := got["192.0.2.77/syslog.log"]; ok {
 		t.Fatal("followed a symlink directory")
+	}
+}
+
+func TestScanGroupsDatedNamesAndHidesTheSeries(t *testing.T) {
+	root := t.TempDir()
+	remote := filepath.Join(root, "remote")
+	child := filepath.Join(remote, "10.1.1.1")
+	if err := os.MkdirAll(child, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	yesterday := filepath.Join(remote, "edge-router-01-20261027-syslog.log")
+	write(yesterday, "old\n")
+	write(filepath.Join(remote, "edge-router-01-20261028-syslog.log"), "new\n")
+	write(filepath.Join(remote, "core-switch-01-20261028-syslog.log"), "core\n")
+	write(filepath.Join(child, "sw-20261027-syslog.log"), "old switch\n")
+	write(filepath.Join(child, "sw-20261028-syslog.log"), "new switch\n")
+	write(filepath.Join(child, "sw-20261028-messages.log"), "messages\n")
+
+	inv, err := inventory.Parse([]byte(`{
+		"log_directories": ["` + remote + `"],
+		"devices": [{"name": "edge", "source_ip": "192.0.2.10", "protocol": "udp", "log_path": "` + yesterday + `"}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := Scan(context.Background(), inv)
+	got := map[string]Candidate{}
+	for _, item := range result.Candidates {
+		got[filepath.Base(item.LogPath)] = item
+	}
+	if _, ok := got["edge-router-01-20261028-syslog.log"]; ok || got["edge-router-01-20261027-syslog.log"].LogPath != "" {
+		t.Fatalf("adopted series was offered again: %#v", got)
+	}
+	core, ok := got["core-switch-01-20261028-syslog.log"]
+	if !ok || core.SuggestedName != "core-switch-01" || core.LogFiles[0].Name != "core-switch-01-{date}-syslog.log" {
+		t.Fatalf("core series %#v", core)
+	}
+	if !strings.Contains(core.Detail, "newest") {
+		t.Fatalf("core detail %q", core.Detail)
+	}
+	sw, ok := got["sw-20261028-syslog.log"]
+	if !ok || sw.SourceIP != "10.1.1.1" || len(sw.LogFiles) != 2 {
+		t.Fatalf("switch series %#v", sw)
+	}
+	if sw.LogFiles[0].Name != "sw-{date}-messages.log" || sw.LogFiles[1].Name != "sw-{date}-syslog.log" {
+		t.Fatalf("switch choices %#v", sw.LogFiles)
 	}
 }
 

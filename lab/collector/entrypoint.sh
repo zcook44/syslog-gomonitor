@@ -64,6 +64,56 @@ if wait_nonempty /var/log/remote/10.188.0.10/syslog.log; then
   ln -sfn /var/log/remote/10.188.0.10/syslog.log /var/log/remote/10.188.0.16/syslog.log
 fi
 
+# Untracked sources whose active name includes a real calendar date.
+# Each series has several days so the dashboard can offer one convention
+# and the monitor can follow the newest file after adoption.
+seed_dated_series() {
+  local dir="$1" host="$2" layout="$3"
+  shift 3
+  local kind day when path
+  mkdir -p "$dir"
+  local -a days
+  if [[ "$layout" == "dashed" ]]; then
+    days=(2026-10-26 2026-10-27 2026-10-28)
+  else
+    days=(20261026 20261027 20261028)
+  fi
+  for day in "${days[@]}"; do
+    case "$day" in
+      *26) when="2026-10-26 08:10:00" ;;
+      *27) when="2026-10-27 08:10:00" ;;
+      *) when="2026-10-28 16:50:00" ;;
+    esac
+    for kind in "$@"; do
+      path="$dir/${host}-${day}-${kind}.log"
+      printf 'lab %s %s %s\n' "$host" "$day" "$kind" > "$path"
+      touch -d "$when" "$path"
+    done
+  done
+}
+
+seed_dated_series /var/log/remote/10.188.0.41 access-switch-05 compact syslog
+seed_dated_series /var/log/remote/10.188.0.42 dist-switch-03 dashed syslog
+seed_dated_series /var/log/remote/10.188.0.43 idf-switch-05 compact syslog messages
+seed_dated_series /var/log/remote/10.188.0.44 wan-router-03 compact syslog
+printf 'operator note, not a log\n' > /var/log/remote/10.188.0.44/notes.txt
+printf 'rotated day\n' > /var/log/remote/10.188.0.44/wan-router-03-20261027-syslog.log.1
+seed_dated_series /var/log/remote/10.188.0.45 wireless-02 dashed syslog messages
+seed_dated_series /var/log/remote/10.188.0.46 vpn-gw-02 compact syslog
+seed_dated_series /var/log/remote/10.188.0.47 ups-02 compact syslog
+printf 'lab ups-02 20261025 syslog\n' > /var/log/remote/10.188.0.47/ups-02-20261025-syslog.log
+touch -d '2026-10-25 08:10:00' /var/log/remote/10.188.0.47/ups-02-20261025-syslog.log
+seed_dated_series /var/log/remote/10.188.0.48 branch-router-02 dashed syslog
+seed_dated_series /var/log/remote/10.188.0.49 core-router-03 compact syslog
+seed_dated_series /var/log/remote/10.188.0.50 lab-ap-02 compact syslog messages
+seed_dated_series /var/log/remote mgmt-switch-01 compact syslog
+seed_dated_series /var/log/remote printer-01 dashed syslog
+seed_dated_series /var/log/remote badge-reader-01 compact syslog
+seed_dated_series /var/log/remote hvac-01 dashed syslog
+printf 'lab camera-nvr-01 20261028 syslog\n' > /var/log/remote/camera-nvr-01-20261028-syslog.log
+touch -d '2026-10-28 16:50:00' /var/log/remote/camera-nvr-01-20261028-syslog.log
+echo "lab: dated adoption fixtures are prepared"
+
 echo "lab: example files are prepared"
 trap - EXIT
 exec /usr/local/bin/syslog-gomonitor serve \

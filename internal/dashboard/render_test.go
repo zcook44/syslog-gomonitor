@@ -49,6 +49,9 @@ func TestPageEscapesInventory(t *testing.T) {
 	if !strings.Contains(body, `data-overdue-after="180"`) {
 		t.Fatal("overdue threshold missing")
 	}
+	if !strings.Contains(body, `id="device-detail"`) || !strings.Contains(body, `data-source="192.0.2.10"`) {
+		t.Fatal("device detail control missing")
+	}
 	if !strings.Contains(body, "4.0 KiB") || !strings.Contains(body, "Receiving") {
 		t.Fatal("expected size and reporting label")
 	}
@@ -80,7 +83,11 @@ func TestPageEscapesInventory(t *testing.T) {
 		SuggestedName: `<script>alert("adopt")</script>`,
 		LastWrite:     &when,
 		ActiveBytes:   active,
-		Detail:        "Per-address log is not in the inventory.",
+		Detail:        "Per-address directory has more than one log file. Choose which one to monitor.",
+		LogFiles: []snapshot.CandidateFile{
+			{Path: "/var/log/host&log/messages.log", Name: "messages.log", ActiveBytes: 8},
+			{Path: "/var/log/host&log/<script>.log", Name: "<script>.log", LastWrite: &when, ActiveBytes: active},
+		},
 	}}
 	snap.Ignored = []snapshot.Ignored{{LogPath: "/var/log/remote/noise&1.log"}}
 	page, err = Page(snap)
@@ -88,8 +95,11 @@ func TestPageEscapesInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	body = string(page)
-	if strings.Contains(body, "<script>alert") || strings.Contains(body, "host&log") {
+	if strings.Contains(body, "<script>alert") || strings.Contains(body, "<script>.log") || strings.Contains(body, "host&log") {
 		t.Fatal("candidate text was not escaped")
+	}
+	if !strings.Contains(body, `data-field="logfile"`) || !strings.Contains(body, "messages.log") || !strings.Contains(body, "&lt;script&gt;.log") {
+		t.Fatal("log file choices missing")
 	}
 	if !strings.Contains(body, "Adopt") || !strings.Contains(body, "Ignore") || !strings.Contains(body, "Stop ignoring") {
 		t.Fatal("adoption actions missing")

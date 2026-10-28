@@ -39,8 +39,8 @@ One long-running process does both jobs. They do not share a loop.
 
 | Loop | Default | What it touches | What it avoids |
 | --- | --- | --- | --- |
-| Activity | Every 5 seconds (`--poll`) | `Lstat` of each current log, and one `ss` call if any device is TCP | File contents, rotations, directory walks |
-| Discovery | About every 30 seconds (`--discover-interval`) | One listing of each `log_directories` entry, then `Lstat` of a new active log | File contents, symlinks, rotations inside an address directory |
+| Activity | Every 5 seconds (`--poll`) | `Lstat` of each current log, and one `ss` call if any device is TCP. A dated name lists that one directory and stats the newest day | File contents, rotations, recursive walks |
+| Discovery | About every 30 seconds (`--discover-interval`) | One listing of each `log_directories` entry, then `Lstat` of each new `*.log` file. Days of one dated name are one candidate | File contents, symlinks, rotations inside an address directory |
 | Stored size | About every 1 hour (`--size-interval`) | One directory listing per log directory, then `Lstat` of matching names | Decompressing archives, following symlinks, reading bytes |
 
 The size pass also runs at startup when `sizes.json` is missing or older than
@@ -133,9 +133,14 @@ Discovery looks at `log_directories` only. It does not run when that list is
 empty. For each real directory (a symlink is skipped and not followed) it
 lists the entries once:
 
-- A child directory contributes one candidate when it contains the active log,
-  `syslog.log` unless `log_path_template` names a different file after
-  `{source_ip}/`. The address is the directory name when that name is an IP.
+- Each child directory is one candidate. Every regular file ending in `.log`
+  directly inside it is a log convention on that card (`syslog.log` and
+  `messages.log` share one card). A date in the name (`edge-router-01-20261028-syslog.log`
+  or `edge-router-01-2026-10-28-syslog.log`) is one convention,
+  `edge-router-01-{date}-syslog.log`, not one card per day. The address is the
+  directory name when that name is an IP. `syslog.log` is the suggested file
+  when it is present. A directory that already contains a device log is left
+  out, and so is a later day of a dated name already in the inventory.
 - A regular file directly in the watched directory is a candidate when it is
   not a rotation (`.1`, `.gz`) or an rsyslog state file (`.offset`, `.state`).
 - A path or source address already in `devices` or `ignored` is left out.
@@ -146,11 +151,17 @@ directory are examined. The page says when either cap is hit. A directory
 with a very large number of names still has to be listed.
 
 Adopt appends one device to `devices.json` and validates the whole file before
-replacing it. The new object omits `log_path` when the template already
-resolves to that file, and uses `log_directory` when the file is
-`{watched}/{source_ip}/syslog.log` in another watched tree. Ignore appends to
-the `ignored` array. A per-address ignore stores `source_ip`, so that sender
-stays hidden if the file is recreated. Stop ignoring deletes that array entry.
+replacing it. The stored path is the newest file of the chosen convention.
+On each poll the monitor lists that directory when the name contains a
+calendar date and stats the newest matching file, so the next day's
+`devicename-date-syslog.log` stays the same device. The new object omits
+`log_path` when the template already resolves to that file, and uses
+`log_directory` when the file is `{watched}/{source_ip}/syslog.log` in
+another watched tree. Ignore appends to the `ignored` array. The card's
+Ignore button records every log file on that card. A per-address ignore
+stores `source_ip`, so that sender stays hidden if the file is recreated.
+Ignoring one day of a dated name hides the later days as well. Stop ignoring
+deletes that array entry.
 
 ## HTTP surface
 
@@ -160,14 +171,18 @@ The listener defaults to `127.0.0.1:8080`. Nothing else is bound.
 | --- | --- |
 | `GET /` | Status page. Inventory text is escaped. |
 | `GET /api/status` | The same snapshot as JSON. |
+| `GET /api/device?source_ip=` | One device's status plus the names in its log directory. Contents are not read. Symlinks are not followed. |
 | `GET /events` | Server-Sent Events. Each event is the board markup and the check time. |
 | `GET /healthz` | `ok` |
 | `POST /api/adopt` | Append one discovered file to the inventory. JSON body: `name`, `log_path`, optional `source_ip`, `protocol`, and `tcp_port`. |
 | `POST /api/ignore` | Append that file to `ignored`. JSON body: `log_path`. |
 | `POST /api/unignore` | Remove an ignored path. JSON body: `log_path`. |
 
-Search and the device-status cards run in the browser. They hide rows in the
-page that was already delivered. **Not in inventory** and **Ignored** also run
+Selecting a device opens a card with that device's status and the files in
+its log directory. The active file, earlier days of a dated name, rotations,
+and other names are labeled. The card reads the directory when it opens and
+again while it stays open. Search and the device-status cards run in the
+browser. They hide rows in the page that was already delivered. **Not in inventory** and **Ignored** also run
 in the browser: each one hides the device table and shows the matching list
 from the snapshot already delivered. Choosing a card that is already selected
 clears that view. None of these cards change the snapshot or the inventory.
@@ -189,14 +204,15 @@ be one discovery would offer. A failed check does not change `devices.json`.
 | Package | Responsibility |
 | --- | --- |
 | `internal/inventory` | Load JSON, reject duplicates and unsafe paths, resolve `{source_ip}`, save `log_directories`, and append adopted or ignored sources |
-| `internal/discover` | List untracked regular files in `log_directories` without reading them |
+| `internal/discover` | List untracked sources in `log_directories` without reading them. One child directory is one candidate |
+| `internal/logname` | Recognize `YYYYMMDD` and `YYYY-MM-DD` in a filename and choose the newest day |
 | `internal/activity` | Classify the current log from `Lstat` |
 | `internal/session` | Parse `ss -H -t -n state established` |
 | `internal/status` | Combine the two signals |
-| `internal/storage` | Hourly on-disk total for one device |
+| `internal/storage` | Hourly on-disk total for one device, and the directory listing behind a device card |
 | `internal/snapshot` | Row model, sort, summary, and the `sizes.json` file |
 | `internal/engine` | Poll loop, size loop, inventory reload, subscribers |
-| `internal/dashboard` | HTML page |
+| `internal/dashboard` | HTML page, including the device detail card |
 | `internal/server` | Loopback HTTP server |
 | `internal/demo` | Synthetic fleet for a workstation demo |
 | `internal/cli` | `serve`, `size`, `check`, `validate`, `configure`, `demo` |

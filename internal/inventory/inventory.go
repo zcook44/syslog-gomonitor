@@ -172,6 +172,7 @@ func (doc document) resolve() (Inventory, error) {
 	names := map[string]struct{}{}
 	addresses := map[string]struct{}{}
 	paths := map[string]struct{}{}
+	seriesSeen := map[string]struct{}{}
 	resolved := make([]Device, 0, len(doc.Devices))
 
 	for i, raw := range doc.Devices {
@@ -263,6 +264,12 @@ func (doc document) resolve() (Inventory, error) {
 			return Inventory{}, fmt.Errorf("log paths must be per-device; duplicate: %s", logPath)
 		}
 		paths[logPath] = struct{}{}
+		if key := datedSeriesKey(logPath); key != "" {
+			if _, dup := seriesSeen[key]; dup {
+				return Inventory{}, fmt.Errorf("dated log names must be per-device; duplicate series: %s", path.Base(logPath))
+			}
+			seriesSeen[key] = struct{}{}
+		}
 
 		resolved = append(resolved, Device{
 			Name:              name,

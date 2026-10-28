@@ -134,10 +134,14 @@ and log paths. Leave the listener on loopback unless the host already has
 access control in front of it.
 
 A file that arrives under a watched directory can be adopted or ignored from
-that page. Both actions replace `/etc/syslog-gomonitor/devices.json`. The
-unit allows writes to that directory and nowhere else except the size-snapshot
-directory. See [Operations](operations.md) for the buttons and
-[Inventory and log files](inventory-and-logs.md) for the `ignored` list.
+that page. A child directory is one card, and a date in the filename stays
+with that device after the day changes. Selecting a device row lists the
+files in its log directory. Both adopt and ignore replace
+`/etc/syslog-gomonitor/devices.json`. The unit allows writes to that directory
+and nowhere else except the size-snapshot directory. See
+[Operations](operations.md) for the buttons and
+[Inventory and log files](inventory-and-logs.md) for the `ignored` list and
+dated names.
 
 Logs from the service:
 

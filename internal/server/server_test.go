@@ -54,6 +54,24 @@ func TestDashboardAndStream(t *testing.T) {
 	if get(t, srv.URL+"/healthz") != "ok\n" {
 		t.Fatal("health")
 	}
+	if err := os.WriteFile(logPath+".1", []byte("rotated\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte(secret), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	detail := get(t, srv.URL+"/api/device?source_ip=192.0.2.10")
+	if strings.Contains(detail, secret) || !strings.Contains(detail, `"kind":"active"`) || !strings.Contains(detail, "syslog.log.1") || !strings.Contains(detail, "notes.txt") {
+		t.Fatalf("detail %s", detail)
+	}
+	unknown, err := http.Get(srv.URL + "/api/device?source_ip=192.0.2.99")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unknown.Body.Close()
+	if unknown.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing device status %d", unknown.StatusCode)
+	}
 
 	res, err := http.Get(srv.URL + "/events")
 	if err != nil {

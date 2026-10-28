@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"syslog-gomonitor/internal/inventory"
+	"syslog-gomonitor/internal/logname"
 )
 
 // Measurement is the stored size of one device at a point in time.
@@ -113,9 +114,10 @@ func Scan(devices []inventory.Device) map[string]Measurement {
 
 		for _, device := range devs {
 			base := filepath.Base(device.LogPath)
+			series, dated := logname.Parse(base)
 			var measured Measurement
 			for name, fi := range infos {
-				if !IsStoredLog(base, name) {
+				if !storedName(dated, series, base, name) {
 					continue
 				}
 				if fi.Mode()&os.ModeSymlink != 0 {
@@ -130,7 +132,7 @@ func Scan(devices []inventory.Device) map[string]Measurement {
 				measured.Files++
 			}
 			for name, err := range infoErr {
-				if IsStoredLog(base, name) {
+				if storedName(dated, series, base, name) {
 					measured.Err = unwrap(err)
 				}
 			}
@@ -139,6 +141,13 @@ func Scan(devices []inventory.Device) map[string]Measurement {
 		}
 	}
 	return out
+}
+
+func storedName(dated bool, series logname.Series, base, name string) bool {
+	if dated {
+		return series.Owns(name)
+	}
+	return IsStoredLog(base, name)
 }
 
 func describe(m Measurement) string {
