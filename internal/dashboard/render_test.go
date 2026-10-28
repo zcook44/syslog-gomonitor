@@ -58,6 +58,12 @@ func TestPageEscapesInventory(t *testing.T) {
 	if !strings.Contains(body, `id="device-search"`) || !strings.Contains(body, `data-filter="healthy"`) {
 		t.Fatal("search or card filters missing")
 	}
+	if !strings.Contains(body, `id="theme-browser"`) || !strings.Contains(body, `id="theme-light"`) || !strings.Contains(body, `id="theme-dark"`) || !strings.Contains(body, `id="back-to-top"`) {
+		t.Fatal("theme or back-to-top controls missing")
+	}
+	if !strings.Contains(body, `id="theme-browser" aria-pressed="true"`) {
+		t.Fatal("browser theme should be the default selection")
+	}
 	if !strings.Contains(body, `data-status="healthy"`) || !strings.Contains(body, "192.0.2.10") {
 		t.Fatal("row search data missing")
 	}

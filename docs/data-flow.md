@@ -137,7 +137,10 @@ A modification time more than 60 seconds in the future is an unknown log.
 The device table stays up until **Not in inventory** or **Ignored** is
 selected. Those two cards appear only when `log_directories` is set. Their
 counts are not part of the device total. Selecting either card again, or any
-device card, brings the table back. A live update keeps the open card.
+device card, brings the table back and loads the latest list. While either
+list is open, live updates refresh the device table and the summary counts,
+and leave that list in place so a form keeps what was typed. A live update
+keeps the open card.
 
 | Card | Click |
 | --- | --- |
