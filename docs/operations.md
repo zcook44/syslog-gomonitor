@@ -26,8 +26,11 @@ The installed binary is `/usr/local/bin/syslog-gomonitor`.
 
 ## Dashboard
 
-The page title is "Syslog source monitor". Counts at the top are the whole
-inventory, not the rows left after a filter.
+The page title is "Syslog source monitor". **Browser** is the default color
+theme and follows the browser. **Light** and **Dark** override that for the
+whole page and keep the choice in this browser. **Browser** clears the override.
+Counts at the top are the whole inventory, not the rows left after a filter.
+**Back to top** appears after the page is scrolled and returns to the header.
 
 | Card | Click |
 | --- | --- |
@@ -42,7 +45,10 @@ inventory, not the rows left after a filter.
 Clicking a status card that is already selected clears that filter and leaves
 no card highlighted. **Devices** also clears a status filter. Selecting **Not
 in inventory** or **Ignored** again returns to the device table, as does
-selecting any device card. The search box matches the device name, source
+selecting any device card. While either list is open, live updates refresh the
+device table and the summary counts, and leave that list in place so a form
+keeps what was typed. Returning to the device table loads the latest list.
+The search box matches the device name, source
 address, log path, protocol, reporting state, and overall status. Search and a
 status card apply together, and only to the device table. "Showing 2 of 9"
 counts rows that pass both. A live update keeps the current search and the
@@ -71,6 +77,8 @@ From those two lists:
 | Adopt | Appends the device to `devices.json`. A per-address file keeps the address in its path. A loose file needs a source IP. The new row appears on the next update. |
 | Ignore | Adds the path to `ignored`. The file is not monitored. A per-address ignore also hides that source address if the file is created again. |
 | Stop ignoring | Removes the `ignored` entry. The file is offered again when it is still there. |
+
+A successful adopt turns that card green, and a successful ignore turns it amber. The card then leaves the open list. A missing or rejected value stays, with a red border on the card and on the field that needs attention.
 
 The name field is editable until you adopt. Rotations, `.offset` and `.state`
 files, and symlinks are not listed. The list says when a directory could not

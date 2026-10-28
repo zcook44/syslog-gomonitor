@@ -23,8 +23,25 @@
     --accent: #1d4e79;
     --shadow: 0 1px 2px rgba(20, 32, 51, .05);
   }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #101820;
+    --ink: #e7eef5;
+    --muted: #a8b6c6;
+    --card: #1a242f;
+    --line: #2d3d4d;
+    --head: #223140;
+    --healthy-bg: #123226;
+    --healthy-fg: #9ee0b8;
+    --attention-bg: #3c211c;
+    --attention-fg: #ffb5a6;
+    --unknown-bg: #3a3114;
+    --unknown-fg: #f3d98a;
+    --accent: #9dc4ea;
+    --shadow: none;
+  }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       color-scheme: dark;
       --bg: #101820;
       --ink: #e7eef5;
@@ -51,6 +68,19 @@
   }
   header, main, footer { width: min(1280px, calc(100% - 2rem)); margin: 0 auto; }
   header { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; padding: 1.5rem 0 1rem; }
+  .header-side { display: flex; flex-direction: column; align-items: flex-end; gap: .65rem; }
+  .theme-switch { display: inline-flex; border: 1px solid var(--line); border-radius: .55rem; overflow: hidden; }
+  .theme-switch button {
+    font: inherit; font-weight: 650; color: var(--ink); background: var(--card);
+    border: 0; padding: .4rem .75rem; cursor: pointer;
+  }
+  .theme-switch button[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+  #back-to-top {
+    position: fixed; right: 1rem; bottom: 1rem; z-index: 2;
+    font: inherit; font-weight: 650; color: var(--bg); background: var(--accent);
+    border: 0; border-radius: .55rem; padding: .55rem .85rem; cursor: pointer;
+  }
+  #back-to-top[hidden] { display: none; }
   h1 { margin: 0 0 .25rem; font-size: 1.6rem; letter-spacing: -.02em; }
   .sub, .note, .meta, caption, footer, .path { color: var(--muted); }
   .sub { margin: 0; max-width: 46rem; }
@@ -71,7 +101,8 @@
     width: 100%; font: inherit; color: var(--ink); background: var(--card);
     border: 1px solid var(--line); border-radius: .55rem; padding: .55rem .7rem;
   }
-  .search input:focus-visible, button.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .search input:focus-visible, button.card:focus-visible,
+  .theme-switch button:focus-visible, #back-to-top:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: .7rem;
     min-width: 8.2rem; padding: .75rem .95rem; box-shadow: var(--shadow);
@@ -113,6 +144,23 @@
     background: var(--card); border: 1px solid var(--line); border-radius: .8rem;
     padding: .85rem .95rem; box-shadow: var(--shadow);
   }
+  .adopt-card.result-adopted, .ignore-card.result-adopted {
+    border: 3px solid var(--healthy-fg);
+    box-shadow: 0 0 0 3px var(--healthy-fg);
+  }
+  .adopt-card.result-ignored, .ignore-card.result-ignored {
+    border: 3px solid var(--unknown-fg);
+    box-shadow: 0 0 0 3px var(--unknown-fg);
+  }
+  .adopt-card.result-error, .ignore-card.result-error {
+    border: 3px solid var(--attention-fg);
+    box-shadow: 0 0 0 3px var(--attention-fg);
+  }
+  .choice-note { margin: 0 0 .55rem; font-weight: 700; }
+  .result-adopted .choice-note { color: var(--healthy-fg); }
+  .result-ignored .choice-note { color: var(--unknown-fg); }
+  .result-error .choice-note { color: var(--attention-fg); }
+  .adopt-fields input.invalid, .adopt-fields select.invalid { border-color: var(--attention-fg); }
   .adopt-fields { display: flex; flex-wrap: wrap; gap: .6rem .75rem; align-items: flex-end; margin-top: .7rem; }
   .adopt-fields label { display: flex; flex-direction: column; gap: .2rem; font-size: .82rem; color: var(--muted); }
   .adopt-fields input, .adopt-fields select {
@@ -131,6 +179,17 @@
   footer { padding: 1rem 0 2rem; }
   footer p { margin: 0; }
 </style>
+<script>
+(function () {
+  var theme = null;
+  try { theme = localStorage.getItem("syslog-gomonitor-theme"); } catch (err) {}
+  if (theme !== "light" && theme !== "dark") {
+    document.documentElement.removeAttribute("data-theme");
+    return;
+  }
+  document.documentElement.setAttribute("data-theme", theme);
+})();
+</script>
 </head>
 <body data-overdue-after="{{.OverdueAfter}}" data-generated-at="{{.GeneratedAt}}">
 <header>
@@ -138,7 +197,14 @@
     <h1>Syslog source monitor</h1>
     <p class="sub">Devices expected to report to this server. Activity is checked continuously. Stored log size is measured on an hourly pass.</p>
   </div>
-  <p id="live" class="live" role="status"><span class="dot" aria-hidden="true"></span><span id="live-text">Live</span></p>
+  <div class="header-side">
+    <div class="theme-switch" role="group" aria-label="Color theme">
+      <button type="button" id="theme-browser" aria-pressed="true">Browser</button>
+      <button type="button" id="theme-light" aria-pressed="false">Light</button>
+      <button type="button" id="theme-dark" aria-pressed="false">Dark</button>
+    </div>
+    <p id="live" class="live" role="status"><span class="dot" aria-hidden="true"></span><span id="live-text">Live</span></p>
+  </div>
 </header>
 <main>
   <div class="toolbar">
@@ -154,6 +220,7 @@
 <footer>
   <p>A device is healthy when its own log file was written within its silence limit. TCP devices also need an established session to the configured port. UDP has no connection to check. The active file size is the current log. Stored logs add rotated files in the same directory and are not recounted on every status check. Log contents are never read or shown.</p>
 </footer>
+<button type="button" id="back-to-top" hidden>Back to top</button>
 <noscript><p class="note">Automatic updates need JavaScript. Reload the page for a newer check.</p></noscript>
 <script>
 (function () {
@@ -165,6 +232,8 @@
   var link = "up";
   var statusFilter = "";
   var view = "";
+  var latestMsg = null;
+  var retired = {};
   var actionStatus = document.getElementById("action-status");
   var busy = false;
 
@@ -227,20 +296,84 @@
     liveText.textContent = "Live";
   }
 
-  function adoptionDirty(root) {
-    if (!root) return false;
-    if (root.contains(document.activeElement)) return true;
-    var fields = root.querySelectorAll("input, select");
-    for (var i = 0; i < fields.length; i++) {
-      var input = fields[i];
-      if (input.tagName === "SELECT") {
-        var chosen = input.options[input.selectedIndex];
-        if (chosen && !chosen.defaultSelected) return true;
-        continue;
-      }
-      if (input.value !== input.defaultValue) return true;
+  function panelSelector(name) {
+    return "[data-view-panel='" + name + "']";
+  }
+
+  function fieldCaret() {
+    var el = document.activeElement;
+    if (!el || !board.contains(el) || !el.closest("[data-view-panel]")) return null;
+    var start = null;
+    var end = null;
+    if (typeof el.selectionStart === "number") {
+      start = el.selectionStart;
+      end = el.selectionEnd;
     }
-    return false;
+    return { el: el, start: start, end: end };
+  }
+
+  function restoreCaret(saved) {
+    if (!saved || !saved.el || !board.contains(saved.el)) return;
+    saved.el.focus();
+    if (saved.start === null || !saved.el.setSelectionRange) return;
+    try {
+      saved.el.setSelectionRange(saved.start, saved.end);
+    } catch (err) {}
+  }
+
+  // Live updates must not rebuild the list the operator is filling in.
+  // The device table and summary counts still refresh. The open list is
+  // replaced only after the operator returns to the device table.
+  function installBoard(html, preservePanel) {
+    var caret = fieldCaret();
+    var wrap = document.createElement("div");
+    wrap.innerHTML = html;
+    if (preservePanel === "candidates" || preservePanel === "ignored") {
+      var current = board.querySelector(panelSelector(preservePanel));
+      var incoming = wrap.querySelector(panelSelector(preservePanel));
+      if (current && incoming) incoming.replaceWith(current);
+    }
+    dropRetired(wrap);
+    while (board.firstChild) board.removeChild(board.firstChild);
+    while (wrap.firstChild) board.appendChild(wrap.firstChild);
+    dropRetired(board);
+    restoreCaret(caret);
+  }
+
+  function removeCard(card) {
+    var list = card.parentNode;
+    if (!list) return;
+    list.removeChild(card);
+    if (list.querySelector("[data-path]")) return;
+    var note = document.createElement("p");
+    note.className = "note";
+    note.textContent = list.closest("[data-view-panel='ignored']")
+      ? "Nothing is ignored."
+      : "No untracked files left in this list.";
+    if (list.parentNode) list.parentNode.replaceChild(note, list);
+  }
+
+  function dropRetired(root) {
+    if (!root || !root.querySelectorAll) return;
+    var nodes = root.querySelectorAll("[data-path]");
+    for (var i = nodes.length - 1; i >= 0; i--) {
+      if (retired[nodes[i].getAttribute("data-path")]) removeCard(nodes[i]);
+    }
+  }
+
+  function refreshOpenList() {
+    if (!latestMsg) {
+      applyFilters();
+      return;
+    }
+    var preserve = (view === "candidates" || view === "ignored") ? view : "";
+    installBoard(latestMsg.html, preserve);
+    if (latestMsg.generated_at) {
+      document.body.setAttribute("data-generated-at", latestMsg.generated_at);
+    }
+    link = "up";
+    refreshLive();
+    applyFilters();
   }
 
   function setAction(text, bad) {
@@ -270,10 +403,59 @@
     return el ? el.value.trim() : "";
   }
 
+  function clearMarks(card) {
+    card.classList.remove("result-adopted", "result-ignored", "result-error");
+    var marked = card.querySelectorAll(".invalid");
+    for (var i = 0; i < marked.length; i++) marked[i].classList.remove("invalid");
+  }
+
+  function markFields(card, names) {
+    for (var i = 0; i < names.length; i++) {
+      var el = card.querySelector('[data-field="' + names[i] + '"]');
+      if (el) el.classList.add("invalid");
+    }
+  }
+
+  function choiceNote(card, text) {
+    var note = card.querySelector(".choice-note");
+    if (!note) {
+      note = document.createElement("p");
+      note.className = "choice-note";
+      card.insertBefore(note, card.firstChild);
+    }
+    note.textContent = text;
+  }
+
+  function showChoice(card, kind) {
+    card.classList.remove("result-adopted", "result-ignored", "result-error");
+    if (kind === "ignore") card.classList.add("result-ignored");
+    else if (kind === "error") card.classList.add("result-error");
+    else card.classList.add("result-adopted");
+  }
+
+  function rejectInput(card, message, names) {
+    clearMarks(card);
+    showChoice(card, "error");
+    markFields(card, names);
+    choiceNote(card, message);
+    setAction(message, true);
+  }
+
+  function finishCard(card, kind, logPath) {
+    showChoice(card, kind);
+    choiceNote(card, kind === "ignore" ? "Ignored" : "Adopted");
+    var controls = card.querySelectorAll("button, input, select");
+    for (var i = 0; i < controls.length; i++) controls[i].disabled = true;
+    retired[logPath] = true;
+    setTimeout(function () {
+      dropRetired(board);
+    }, 900);
+  }
+
   function runAction(btn) {
     if (busy) return;
     var card = btn.closest("[data-path]");
-    if (!card) return;
+    if (!card || card.classList.contains("result-adopted") || card.classList.contains("result-ignored")) return;
     var action = btn.getAttribute("data-action");
     var logPath = card.getAttribute("data-path") || "";
     var body = { log_path: logPath };
@@ -284,33 +466,45 @@
       done = "This file can be adopted again.";
     } else if (action === "adopt") {
       var name = field(card, "name");
-      if (!name) {
-        setAction("Enter a device name before adopting.", true);
-        return;
-      }
       var locked = card.getAttribute("data-ip-locked") === "true";
       var source = locked ? (card.getAttribute("data-source-ip") || "") : field(card, "source");
-      if (!locked && !source) {
-        setAction("Enter the source IP address before adopting.", true);
+      var protocol = field(card, "protocol") || "udp";
+      var port = field(card, "port");
+      var bad = [];
+      if (!name) bad.push("name");
+      if (!locked && !source) bad.push("source");
+      if (protocol === "tcp" && port) {
+        var portNumber = Number(port);
+        if (!portNumber || portNumber < 1 || portNumber > 65535) bad.push("port");
+      }
+      if (bad.length) {
+        rejectInput(card, bad[0] === "port"
+          ? "TCP port must be from 1 to 65535."
+          : "Fill in the highlighted fields before adopting.", bad);
         return;
       }
-      var protocol = field(card, "protocol") || "udp";
       body = { name: name, source_ip: source, protocol: protocol, log_path: logPath };
-      var port = field(card, "port");
       if (protocol === "tcp" && port) body.tcp_port = Number(port);
       url = "/api/adopt";
       done = "Adopted " + name + ".";
     }
+    clearMarks(card);
+    showChoice(card, action);
+    choiceNote(card, action === "ignore" ? "Ignoring this file" : action === "unignore" ? "Returning this file" : "Adopting this device");
     busy = true;
     btn.disabled = true;
     setAction("Saving…", false);
     postJSON(url, body).then(function () {
       setAction(done, false);
+      finishCard(card, action, logPath);
     }).catch(function (err) {
-      setAction(err.message || "The inventory could not be updated.", true);
+      var message = err.message || "The inventory could not be updated.";
+      showChoice(card, "error");
+      choiceNote(card, message);
+      setAction(message, true);
+      if (btn.isConnected) btn.disabled = false;
     }).then(function () {
       busy = false;
-      if (btn.isConnected) btn.disabled = false;
     });
   }
 
@@ -318,21 +512,16 @@
     if (!msg || typeof msg.html !== "string") {
       return;
     }
-    var adoption = document.getElementById("adoption");
-    var keep = adoptionDirty(adoption) ? adoption : null;
-    var rev = keep ? keep.getAttribute("data-revision") : "";
-    board.innerHTML = msg.html;
-    if (keep) {
-      var next = document.getElementById("adoption");
-      if (next && next.getAttribute("data-revision") === rev) next.replaceWith(keep);
-    }
-    if (msg.generated_at) {
-      document.body.setAttribute("data-generated-at", msg.generated_at);
-    }
-    link = "up";
-    refreshLive();
-    applyFilters();
+    latestMsg = msg;
+    refreshOpenList();
   }
+
+  board.addEventListener("input", function (ev) {
+    var card = ev.target.closest && ev.target.closest("[data-path]");
+    if (!card || !board.contains(card)) return;
+    ev.target.classList.remove("invalid");
+    if (!card.querySelector(".invalid")) card.classList.remove("result-error");
+  });
 
   board.addEventListener("click", function (ev) {
     var action = ev.target.closest("[data-action]");
@@ -348,7 +537,7 @@
         view = chosen;
         statusFilter = "";
       }
-      applyFilters();
+      refreshOpenList();
       return;
     }
     var card = ev.target.closest("[data-filter]");
@@ -357,7 +546,7 @@
     var next = card.getAttribute("data-filter");
     if (next === "all" || next === statusFilter) statusFilter = "";
     else statusFilter = next;
-    applyFilters();
+    refreshOpenList();
   });
   if (search) search.addEventListener("input", applyFilters);
 
@@ -381,6 +570,46 @@
       link = "down";
       refreshLive();
     };
+  }
+
+  var themeBrowser = document.getElementById("theme-browser");
+  var themeLight = document.getElementById("theme-light");
+  var themeDark = document.getElementById("theme-dark");
+  var backToTop = document.getElementById("back-to-top");
+
+  function paintTheme(theme) {
+    var explicit = theme === "light" || theme === "dark";
+    if (explicit) document.documentElement.setAttribute("data-theme", theme);
+    else document.documentElement.removeAttribute("data-theme");
+    if (themeBrowser) themeBrowser.setAttribute("aria-pressed", explicit ? "false" : "true");
+    if (themeLight) themeLight.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
+    if (themeDark) themeDark.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
+  }
+
+  function chooseTheme(theme) {
+    try {
+      if (theme === "browser") localStorage.removeItem("syslog-gomonitor-theme");
+      else localStorage.setItem("syslog-gomonitor-theme", theme);
+    } catch (err) {}
+    paintTheme(theme === "browser" ? "" : theme);
+  }
+
+  paintTheme(document.documentElement.getAttribute("data-theme") || "");
+  if (themeBrowser) themeBrowser.addEventListener("click", function () { chooseTheme("browser"); });
+  if (themeLight) themeLight.addEventListener("click", function () { chooseTheme("light"); });
+  if (themeDark) themeDark.addEventListener("click", function () { chooseTheme("dark"); });
+
+  function syncBackToTop() {
+    if (!backToTop) return;
+    backToTop.hidden = window.scrollY < 320;
+  }
+  if (backToTop) {
+    backToTop.addEventListener("click", function () {
+      var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+    });
+    window.addEventListener("scroll", syncBackToTop);
+    syncBackToTop();
   }
 
   refreshLive();
