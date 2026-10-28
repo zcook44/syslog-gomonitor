@@ -28,11 +28,11 @@ That package serves HTTPS on port 8443. To pack the loopback HTTP dashboard
 `install.sh` can still choose the other mode. Both unit files are in the
 tarball.
 
-The script writes the version 1.1.0 package:
+The script writes the version 1.2.0 package:
 
 ```text
-release/syslog-gomonitor-1.1.0-linux-amd64.tar.gz
-release/syslog-gomonitor-1.1.0-linux-amd64.tar.gz.sha256
+release/syslog-gomonitor-1.2.0-linux-amd64.tar.gz
+release/syslog-gomonitor-1.2.0-linux-amd64.tar.gz.sha256
 ```
 
 The version string comes from [`release/VERSION`](../release/VERSION).
@@ -43,7 +43,7 @@ Confirm the checksum before the file leaves the build machine:
 
 ```bash
 cd release
-sha256sum -c syslog-gomonitor-1.1.0-linux-amd64.tar.gz.sha256
+sha256sum -c syslog-gomonitor-1.2.0-linux-amd64.tar.gz.sha256
 ```
 
 ## 2. Move it to the syslog server
@@ -52,9 +52,9 @@ Copy the `.tar.gz` and the `.sha256` file by the site's approved offline
 method. On the server:
 
 ```bash
-sha256sum -c syslog-gomonitor-1.1.0-linux-amd64.tar.gz.sha256
-tar -xzf syslog-gomonitor-1.1.0-linux-amd64.tar.gz
-cd syslog-gomonitor-1.1.0-linux-amd64
+sha256sum -c syslog-gomonitor-1.2.0-linux-amd64.tar.gz.sha256
+tar -xzf syslog-gomonitor-1.2.0-linux-amd64.tar.gz
+cd syslog-gomonitor-1.2.0-linux-amd64
 sha256sum -c SHA256SUMS
 ```
 

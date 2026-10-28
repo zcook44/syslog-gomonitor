@@ -1,10 +1,11 @@
 # syslog-gomonitor
 
-Version 1.1.0.
+Version 1.2.0.
 
 `syslog-gomonitor` reports whether the devices that should be sending syslog
 to **this server** are still doing so. It reads a JSON inventory, stats each
-device's own log file, and serves a status page on loopback. A separate hourly
+device's own log file, and serves an HTTPS status page on port 8443. An
+install can opt out and keep HTTP on loopback port 8080. A separate hourly
 pass totals the bytes stored for each device, including rotated logs.
 
 The program does not receive syslog, does not change rsyslog, and does not

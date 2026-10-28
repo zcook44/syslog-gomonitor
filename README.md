@@ -1,6 +1,6 @@
 # Syslog source monitor (Go)
 
-Version 1.1.0.
+Version 1.2.0.
 
 `syslog-gomonitor` watches the devices that are supposed to be reporting to
 **this** syslog server. It reads a JSON inventory, checks each device's own log
@@ -213,12 +213,13 @@ Viewing from another machine, without opening the port:
 # The certificate must include that name, and the workstation must trust the CA.
 ```
 
-The page shows device names, addresses, and log paths. Keep the listener on
-loopback unless the host has its own access control.
+The page shows device names, addresses, and log paths. HTTPS listens on every
+interface, so limit TCP 8443 to the admin network. The HTTP install stays on
+loopback.
 
 ## Requirements
 
-The 1.1.0 production package is a static `linux/amd64` binary. The syslog
+The 1.2.0 production package is a static `linux/amd64` binary. The syslog
 server does not need Go, a C library, Python, or a web server. The install
 script does not download packages.
 
@@ -231,7 +232,7 @@ Needed only to create the tarball. The syslog server does not need any of these.
 | Go 1.22 or newer | `golang` | `release/build.sh` compiles the binary. CGO is disabled, so a C compiler is not required. |
 | `file` | `file` | The build refuses a binary that is not statically linked. |
 | `sha256sum` | `coreutils` | Checksum of the tarball and of the binary inside it. |
-| `tar` and `gzip` | `tar`, `gzip` | Writes `release/syslog-gomonitor-1.1.0-linux-amd64.tar.gz`. |
+| `tar` and `gzip` | `tar`, `gzip` | Writes `release/syslog-gomonitor-1.2.0-linux-amd64.tar.gz`. |
 | Bash | `bash` | `release/build.sh`. |
 
 ### Syslog server packages
@@ -270,16 +271,16 @@ The container lab and the single-process demo are not part of the production ins
 
 ## Install on the syslog server
 
-Version 1.1.0 is the offline tarball built by `./release/build.sh`. Full steps,
+Version 1.2.0 is the offline tarball built by `./release/build.sh`. Full steps,
 including the directory prompt and upgrades, are in
 [docs/install.md](docs/install.md).
 
 ```bash
 ./release/build.sh
-# copy release/syslog-gomonitor-1.1.0-linux-amd64.tar.gz and the .sha256 file
-sha256sum -c syslog-gomonitor-1.1.0-linux-amd64.tar.gz.sha256
-tar -xzf syslog-gomonitor-1.1.0-linux-amd64.tar.gz
-cd syslog-gomonitor-1.1.0-linux-amd64
+# copy release/syslog-gomonitor-1.2.0-linux-amd64.tar.gz and the .sha256 file
+sha256sum -c syslog-gomonitor-1.2.0-linux-amd64.tar.gz.sha256
+tar -xzf syslog-gomonitor-1.2.0-linux-amd64.tar.gz
+cd syslog-gomonitor-1.2.0-linux-amd64
 sudo ./install.sh --log-dir /var/log/remote \
   --tls-cert /etc/pki/tls/certs/syslog.fullchain.pem \
   --tls-key /etc/pki/tls/private/syslog.key

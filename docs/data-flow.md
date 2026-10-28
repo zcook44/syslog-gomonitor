@@ -1,8 +1,9 @@
 # Syslog source monitor — data flow
 
-Release 1.1.0. This is the team copy of the data-flow canvas. It describes how a
+Release 1.2.0. This is the team copy of the data-flow canvas. It describes how a
 message, a status check, and a stored-size measurement move on one syslog
-server.
+server. The packaged dashboard is HTTPS on port 8443. `install.sh --http`, or
+a package built with `./release/build.sh --http`, keeps HTTP on `127.0.0.1:8080`.
 
 `syslog-gomonitor` stats files and reads the established-TCP table. It does
 not receive syslog, does not change rsyslog, and does not read log contents.
