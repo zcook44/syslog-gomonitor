@@ -17,7 +17,7 @@ inventory edit is refused, and the previous device list stays in service.
 | Activity poll | 5s (`--poll`) |
 | Discovery | 30s (`--discover-interval`) |
 | Stored size | 1h (`--size-interval`) |
-| Dashboard | `127.0.0.1:8080` |
+| Dashboard | HTTPS `:8443` on the host |
 
 ## Data flow on this server
 
@@ -34,7 +34,7 @@ flowchart TB
   sizes["sizes.json<br/>/var/lib/syslog-gomonitor"]
   engine["syslog-gomonitor engine<br/>Activity 5s · Discovery 30s · Stored size 1h"]
   snapshot["Snapshot<br/>in memory, one-slot fanout"]
-  page["Dashboard<br/>127.0.0.1:8080"]
+  page["HTTPS dashboard<br/>:8443"]
 
   devices -->|"syslog"| rsyslog
   rsyslog -->|"per source"| files
@@ -167,7 +167,7 @@ the snapshot. Adopt, ignore, and stop ignoring are the actions that rewrite
 
 ## What crosses the HTTP boundary
 
-The listener defaults to `127.0.0.1:8080`. Nothing else is bound.
+The installed listener is HTTPS on port 8443 on every interface. `install.sh --http`, or a package built with `./release/build.sh --http`, listens on `127.0.0.1:8080` without TLS. `serve` without a certificate stays on HTTP. The lab publishes HTTPS on the host's port 8443.
 
 | Request | Direction | Payload |
 | --- | --- | --- |

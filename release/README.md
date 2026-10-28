@@ -10,14 +10,17 @@ The program's Go code uses only the standard library.
 `devices.json` as `log_directories`. Pass `--log-dir` once per directory when
 there is no terminal. The packaged service unit allows the process to replace
 that inventory file when an operator adopts or ignores a source from the
-dashboard. A dated log name keeps following the newest day, and selecting a
-device lists the files in its directory. The rest of the filesystem stays
-read-only, apart from the size snapshot under `/var/lib/syslog-gomonitor`.
+dashboard. `./release/build.sh` packs HTTPS on port 8443. `./release/build.sh --http`
+packs the loopback HTTP unit (`127.0.0.1:8080`) as the default, and
+`install.sh --http` selects that unit from either package. A dated log name
+keeps following the newest day, and selecting a device lists the files in its
+directory. The rest of the filesystem stays read-only, apart from the size
+snapshot under `/var/lib/syslog-gomonitor`.
 
 | File | Role |
 | --- | --- |
-| `build.sh` | Run on a machine with Go 1.22 or newer. Writes the tarball here. |
-| `install.sh` | Copied into the tarball. Run as root on the syslog server. |
+| `build.sh` | Run on a machine with Go 1.22 or newer. Writes the tarball here. `--http` packs the loopback HTTP unit as the default dashboard. |
+| `install.sh` | Copied into the tarball. Run as root on the syslog server. `--http` installs HTTP on `127.0.0.1:8080` instead of HTTPS. |
 | `VERSION` | Version embedded in the package name. |
 
 ```bash

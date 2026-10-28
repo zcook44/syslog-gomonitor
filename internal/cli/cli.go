@@ -66,6 +66,8 @@ func dispatch(args []string) error {
 		return validate(args[1:])
 	case "configure":
 		return configure(args[1:])
+	case "validate-tls":
+		return validateTLS(args[1:])
 	case "demo":
 		return runDemo(args[1:])
 	default:
@@ -84,6 +86,7 @@ Usage:
   syslog-gomonitor check       Print one JSON status snapshot
   syslog-gomonitor validate    Check the inventory file
   syslog-gomonitor configure   Save the syslog directories to watch
+  syslog-gomonitor validate-tls  Check the dashboard TLS certificate chain
   syslog-gomonitor demo        Example devices and a local dashboard
 
 Run syslog-gomonitor <command> -h for flags.
@@ -95,6 +98,8 @@ func serve(args []string) error {
 	config := fs.String("config", defaultConfig, "JSON device inventory")
 	state := fs.String("state", defaultState, "hourly stored-size snapshot")
 	listen := fs.String("listen", "127.0.0.1:8080", "dashboard address (host:port)")
+	tlsCert := fs.String("tls-cert", "", "PEM certificate chain: server certificate, then intermediates")
+	tlsKey := fs.String("tls-key", "", "PEM private key for the server certificate")
 	pollStr := fs.String("poll", "5s", "how often to recheck log activity and TCP sessions")
 	sizeStr := fs.String("size-interval", "1h", "how often to measure stored log size; 0s leaves that to the size command")
 	discoverStr := fs.String("discover-interval", "30s", "how often to look for untracked files in log directories; 0s checks once at startup")
@@ -132,10 +137,21 @@ func serve(args []string) error {
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	id := server.Identity{CertificateFile: *tlsCert, KeyFile: *tlsKey}
+	if (id.CertificateFile == "") != (id.KeyFile == "") {
+		return fmt.Errorf("--tls-cert and --tls-key must both be set")
+	}
+	scheme := "http"
+	if id.CertificateFile != "" {
+		if _, err := server.LoadLeaf(id); err != nil {
+			return err
+		}
+		scheme = "https"
+	}
 	eng.Prime(ctx)
-	slog.Info("serving", "addr", *listen, "devices", len(inv.Devices), "poll", poll.String(), "size_interval", sizeEvery.String(), "discover_interval", discoverEvery.String())
+	slog.Info("serving", "scheme", scheme, "addr", *listen, "devices", len(inv.Devices), "poll", poll.String(), "size_interval", sizeEvery.String(), "discover_interval", discoverEvery.String())
 	go eng.Run(ctx)
-	return server.Listen(ctx, *listen, eng)
+	return server.Listen(ctx, *listen, eng, id)
 }
 
 func measure(args []string) error {
@@ -225,6 +241,33 @@ func validate(args []string) error {
 		fmt.Printf("%s  %s  %s  stale %ds  %s\n",
 			device.Name, transport, device.SourceIP, device.StaleAfterSeconds, device.LogPath)
 	}
+	return nil
+}
+
+func validateTLS(args []string) error {
+	fs := flag.NewFlagSet("validate-tls", flag.ContinueOnError)
+	cert := fs.String("tls-cert", "", "PEM certificate chain: server certificate, then intermediates")
+	key := fs.String("tls-key", "", "PEM private key for the server certificate")
+	if err := parseArgs(fs, args); err != nil {
+		return err
+	}
+	leaf, err := server.LoadLeaf(server.Identity{CertificateFile: *cert, KeyFile: *key})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Server certificate: %s\n", leaf.Certificate.Subject.String())
+	if len(leaf.Certificate.DNSNames) > 0 {
+		fmt.Printf("DNS names: %s\n", strings.Join(leaf.Certificate.DNSNames, ", "))
+	}
+	if len(leaf.Certificate.IPAddresses) > 0 {
+		addrs := make([]string, len(leaf.Certificate.IPAddresses))
+		for i, ip := range leaf.Certificate.IPAddresses {
+			addrs[i] = ip.String()
+		}
+		fmt.Printf("IP addresses: %s\n", strings.Join(addrs, ", "))
+	}
+	fmt.Printf("Intermediates: %d\n", leaf.Intermediates)
+	fmt.Println("The chain file lists the server certificate first. Browsers must trust the CA that issued it, and the name in the address bar must be one of the certificate names.")
 	return nil
 }
 
@@ -344,7 +387,7 @@ func runDemo(args []string) error {
 	}()
 	go eng.Run(ctx)
 	fmt.Fprintf(os.Stdout, "Demo data: %s\nOpen http://%s/\n", sc.Root, *listen)
-	return server.Listen(ctx, *listen, eng)
+	return server.Listen(ctx, *listen, eng, server.Identity{})
 }
 
 func open(config, state string, sizeEvery time.Duration) (*engine.Engine, error) {

@@ -18,6 +18,16 @@ cd syslog-gomonitor
 ./release/build.sh
 ```
 
+That package serves HTTPS on port 8443. To pack the loopback HTTP dashboard
+(`127.0.0.1:8080`) as the default unit instead:
+
+```bash
+./release/build.sh --http
+```
+
+`install.sh` can still choose the other mode. Both unit files are in the
+tarball.
+
 The script writes the version 1.1.0 package:
 
 ```text
@@ -60,7 +70,17 @@ the script install the example and edit it afterwards.
 sudo ./install.sh
 ```
 
-What that does:
+On a terminal the script asks whether to serve HTTPS. Answer `n` to install
+HTTP on `127.0.0.1:8080` instead. The same choice is `--http`:
+
+```bash
+sudo ./install.sh --http --log-dir /var/log/remote
+```
+
+`--http` cannot be combined with `--tls-cert` or `--tls-key`. A package built
+with `./release/build.sh --http` already defaults to that HTTP unit.
+
+What an HTTPS install does:
 
 1. Verifies `bin/syslog-gomonitor` against `SHA256SUMS`.
 2. Copies the binary to `/usr/local/bin/syslog-gomonitor`.
@@ -69,12 +89,13 @@ What that does:
 5. Copies `devices.example.json` to `/etc/syslog-gomonitor/devices.example.json`.
 6. Asks for the syslog directories to watch, or uses each `--log-dir`. A new inventory is created with those directories and example devices. An existing inventory keeps its devices and updates `log_directories`. Without a terminal or `--log-dir`, a new inventory uses `/var/log/remote`.
 7. Runs `syslog-gomonitor validate`. A directory list that leaves a device file outside those directories is not written, and the service is left unstarted.
-8. Reloads systemd, enables `syslog-gomonitor.service`, and restarts it.
-9. Checks that `127.0.0.1:8080/healthz` answers `ok`.
+8. Links the host certificate chain and private key under `/etc/syslog-gomonitor/tls/` and checks that the server certificate is first in the chain.
+9. Reloads systemd, enables `syslog-gomonitor.service`, and restarts it.
+10. Checks that `https://127.0.0.1:8443/healthz` answers over TLS.
 
 `--no-start` stops after the files and `daemon-reload`.
 
-The service listens on `127.0.0.1:8080` and runs as root so it can stat
+An HTTPS install listens on port 8443 on every interface. An HTTP install listens on `127.0.0.1:8080` only. Either way the service runs as root so it can stat
 root-owned logs. It may write its size snapshot under
 `/var/lib/syslog-gomonitor`, which systemd creates, and it may replace
 `/etc/syslog-gomonitor/devices.json` when an operator adopts or ignores a
@@ -119,19 +140,16 @@ The service reloads a valid file on the next poll, within about 5 seconds.
 Confirm the page:
 
 ```bash
-curl --fail http://127.0.0.1:8080/healthz
-curl --fail http://127.0.0.1:8080/api/status
+curl --fail --cacert /path/to/root.pem https://127.0.0.1:8443/healthz
+curl --fail --cacert /path/to/root.pem https://127.0.0.1:8443/api/status
 ```
 
-From a workstation, without opening the port:
-
-```bash
-ssh -L 8080:127.0.0.1:8080 your-user@your-syslog-server
-```
-
-Then open `http://127.0.0.1:8080/`. The page shows device names, addresses,
-and log paths. Leave the listener on loopback unless the host already has
-access control in front of it.
+From an admin workstation, open `https://<syslog-server>:8443/`. The name in
+that address must be on the server certificate, and the workstation must trust
+the CA that issued it. The page has no login, so allow TCP 8443 only from the
+admin network. An install that passed `--http` is `http://127.0.0.1:8080/` on
+the syslog server itself. The page shows device names, addresses,
+and log paths.
 
 A file that arrives under a watched directory can be adopted or ignored from
 that page. A child directory is one card, and a date in the filename stays

@@ -1,0 +1,29 @@
+[Unit]
+Description=Realtime syslog source monitor
+Documentation=file:/usr/local/share/doc/syslog-gomonitor/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/syslog-gomonitor serve --config /etc/syslog-gomonitor/devices.json --state /var/lib/syslog-gomonitor/sizes.json --listen 127.0.0.1:8080 --poll 5s --size-interval 1h --discover-interval 30s
+StateDirectory=syslog-gomonitor
+UMask=0022
+NoNewPrivileges=yes
+ProtectSystem=strict
+# Adoption and ignore replace devices.json. The directory has to be writable
+# because the new file is created beside the old one and then renamed.
+ReadWritePaths=/etc/syslog-gomonitor
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

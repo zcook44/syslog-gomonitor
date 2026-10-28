@@ -5,9 +5,19 @@ collector running rsyslog and the monitor from the current source tree, plus
 example containers that send syslog at that collector. Use it to check the
 dashboard while changing the monitor.
 
-The page is published only on the host loopback:
+The dashboard is HTTPS on port 8443, on the host's addresses, so another
+machine on this network can open it. Generate the lab certificate before the
+first start. It covers `localhost`, this machine's hostname, `127.0.0.1`, and
+the host's other IPv4 addresses.
 
-<http://127.0.0.1:18080/>
+```bash
+go run ./lab/tls/generate.go -out lab/tls/out
+```
+
+Trust `lab/tls/out/ca.pem` in the browser, then open one of the URLs the
+generator prints. From this machine that is <https://127.0.0.1:8443/>. The
+generated key and certificate stay in `lab/tls/out/` and are not part of the
+source tree.
 
 ## Start and stop
 

@@ -21,8 +21,13 @@ import (
 	"syslog-gomonitor/internal/storage"
 )
 
-// Listen serves the dashboard until ctx is cancelled.
-func Listen(ctx context.Context, addr string, eng *engine.Engine) error {
+// Listen serves the dashboard until ctx is cancelled. An empty Identity
+// serves HTTP. A certificate and key serve HTTPS and are re-read for each
+// new connection.
+func Listen(ctx context.Context, addr string, eng *engine.Engine, id Identity) error {
+	if (id.CertificateFile == "") != (id.KeyFile == "") {
+		return fmt.Errorf("TLS certificate and private key must both be set")
+	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -33,7 +38,17 @@ func Listen(ctx context.Context, addr string, eng *engine.Engine) error {
 	}
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- srv.Serve(ln)
+		if id.CertificateFile == "" {
+			errCh <- srv.Serve(ln)
+			return
+		}
+		if _, err := LoadLeaf(id); err != nil {
+			errCh <- err
+			_ = ln.Close()
+			return
+		}
+		srv.TLSConfig = tlsConfig(id)
+		errCh <- srv.ServeTLS(ln, "", "")
 	}()
 	select {
 	case <-ctx.Done():
