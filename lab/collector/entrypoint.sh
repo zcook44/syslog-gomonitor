@@ -27,8 +27,8 @@ if [[ "$ready" -ne 1 ]]; then
 fi
 echo "lab: rsyslog is listening"
 
-edge=/var/log/remote/10.88.0.10
-branch=/var/log/remote/10.88.0.18
+edge=/var/log/remote/10.188.0.10
+branch=/var/log/remote/10.188.0.18
 mkdir -p "$edge" "$branch" /var/log/firewall
 printf 'edge-router-01 rotated syslog\n' > "$edge/syslog.log.1"
 printf 'edge-router-01 historical counters\n%.0s' {1..80} | gzip -c > "$edge/syslog.log-20261022.gz"
@@ -49,19 +49,19 @@ wait_nonempty() {
   return 1
 }
 
-wait_nonempty /var/log/remote/10.88.0.12/syslog.log && touch -d '1 hour ago' /var/log/remote/10.88.0.12/syslog.log
-wait_nonempty /var/log/remote/10.88.0.19/syslog.log && touch -d '3 hours ago' /var/log/remote/10.88.0.19/syslog.log
-wait_nonempty /var/log/remote/10.88.0.15/syslog.log && touch -d '1 hour ago' /var/log/remote/10.88.0.15/syslog.log
-wait_nonempty /var/log/remote/10.88.0.17/syslog.log && touch -d '1 hour' /var/log/remote/10.88.0.17/syslog.log
+wait_nonempty /var/log/remote/10.188.0.12/syslog.log && touch -d '1 hour ago' /var/log/remote/10.188.0.12/syslog.log
+wait_nonempty /var/log/remote/10.188.0.19/syslog.log && touch -d '3 hours ago' /var/log/remote/10.188.0.19/syslog.log
+wait_nonempty /var/log/remote/10.188.0.15/syslog.log && touch -d '1 hour ago' /var/log/remote/10.188.0.15/syslog.log
+wait_nonempty /var/log/remote/10.188.0.17/syslog.log && touch -d '1 hour' /var/log/remote/10.188.0.17/syslog.log
 
 if wait_nonempty /var/log/firewall/firewall-01.log; then
   cp /var/log/firewall/firewall-01.log /var/log/firewall/firewall-01.log.1
   : > /var/log/firewall/firewall-01.log
 fi
 
-if wait_nonempty /var/log/remote/10.88.0.10/syslog.log; then
-  mkdir -p /var/log/remote/10.88.0.16
-  ln -sfn /var/log/remote/10.88.0.10/syslog.log /var/log/remote/10.88.0.16/syslog.log
+if wait_nonempty /var/log/remote/10.188.0.10/syslog.log; then
+  mkdir -p /var/log/remote/10.188.0.16
+  ln -sfn /var/log/remote/10.188.0.10/syslog.log /var/log/remote/10.188.0.16/syslog.log
 fi
 
 echo "lab: example files are prepared"
