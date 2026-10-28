@@ -10,8 +10,9 @@ The program's Go code uses only the standard library.
 `devices.json` as `log_directories`. Pass `--log-dir` once per directory when
 there is no terminal. The packaged service unit allows the process to replace
 that inventory file when an operator adopts or ignores a source from the
-dashboard. The rest of the filesystem stays read-only, apart from the size
-snapshot under `/var/lib/syslog-gomonitor`.
+dashboard. A dated log name keeps following the newest day, and selecting a
+device lists the files in its directory. The rest of the filesystem stays
+read-only, apart from the size snapshot under `/var/lib/syslog-gomonitor`.
 
 | File | Role |
 | --- | --- |

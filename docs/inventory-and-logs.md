@@ -87,6 +87,7 @@ the handshake.
 
 The dashboard writes these entries from **Ignore**. A per-address file stores
 `source_ip`, and discovery then hides every untracked file for that address.
+Ignoring one day of a dated name also hides later days of that same name.
 **Stop ignoring** removes the entry. An entry that names a device path or a
 device address is rejected, so a source is not both tracked and ignored.
 `validate` prints the list. Removing `log_directories` does not keep an

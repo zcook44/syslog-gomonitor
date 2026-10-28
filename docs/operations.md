@@ -39,7 +39,7 @@ Counts at the top are the whole inventory, not the rows left after a filter.
 | Needs attention | Show only devices that need attention. |
 | Unknown | Show only unknown devices. |
 | Stored logs | Not a filter. Total bytes from successful size measurements. |
-| Not in inventory | Shown when `log_directories` is set. Hides the device table and lists files that are not devices. The count is not part of the device total. |
+| Not in inventory | Shown when `log_directories` is set. Hides the device table and lists one card per untracked directory or loose file. The count is not part of the device total. |
 | Ignored | Shown when `log_directories` is set. Hides the device table and lists paths recorded in `ignored`. The count is not part of the device total. |
 
 Clicking a status card that is already selected clears that filter and leaves
@@ -61,8 +61,8 @@ Columns:
 | Reporting | Current log only. Receiving, Stale, Missing, Empty, or Unknown. |
 | Connection | `Connectionless` for UDP. Established, no session, or the `ss` error for TCP. |
 | Last write | Modification time of the current file, in UTC. |
-| Active file | Size of that file from the same stat. Updates on every poll. |
-| Stored logs | Active file plus rotations, from the last hourly measurement. |
+| Active file | Size of the file the poll just stated. Updates on every poll. A dated name is the newest day of that series, not the path stored at adoption. |
+| Stored logs | Active file plus rotations, from the last hourly measurement. A dated name also includes the other days of that series. |
 | Overall | Healthy, Needs attention, or Unknown. |
 
 Rows are ordered with problems first, then unknown, then healthy, and by name
@@ -74,16 +74,28 @@ From those two lists:
 
 | Action | Result |
 | --- | --- |
-| Adopt | Appends the device to `devices.json`. A per-address file keeps the address in its path. A loose file needs a source IP. The new row appears on the next update. |
-| Ignore | Adds the path to `ignored`. The file is not monitored. A per-address ignore also hides that source address if the file is created again. |
+| Adopt | Appends the device to `devices.json`. When the card lists more than one log file, the selected convention is the one that is stored. A per-address file keeps the address in its path. A loose file needs a source IP. The new row appears on the next update. A dated name keeps following the newest matching file. |
+| Ignore | Adds every log file on the card to `ignored`. Those files are not monitored. A per-address ignore also hides that source address if the file is created again. Ignoring one day of a dated name hides later days of that name. |
 | Stop ignoring | Removes the `ignored` entry. The file is offered again when it is still there. |
 
 A successful adopt turns that card green, and a successful ignore turns it amber. The card then leaves the open list. A missing or rejected value stays, with a red border on the card and on the field that needs attention.
 
-The name field is editable until you adopt. Rotations, `.offset` and `.state`
+The name field is editable until you adopt. A directory with both `syslog.log`
+and `messages.log`, or with more than one dated convention, shows a log-file
+menu. Days of one dated name are a single choice, labeled with `{date}`, and
+the choice points at the newest file. Rotations, `.offset` and `.state`
 files, and symlinks are not listed. The list says when a directory could not
-be read, or when more than 100 untracked files were found. `validate` prints
+be read, or when more than 100 untracked sources were found. `validate` prints
 ignored paths. `check` includes `candidates` and `ignored` in the JSON snapshot.
+
+Select a device row, or press Enter on a highlighted row, to open its detail
+card. The card shows status, the silence limit, the active path, and every
+name in that log directory. **Active** is the file being checked. **Same
+series** is another day of a dated name. **Rotation** is a sibling such as
+`.1` or `.gz`. Other names, symlinks, and subdirectories are labeled and are
+not followed. The card re-reads the directory while it stays open. Close
+returns to the table. `GET /api/device?source_ip=` is the same information as
+JSON. Log contents are not included.
 
 ## How to read a row
 
@@ -156,9 +168,11 @@ record every 5-second poll or every discovery pass.
 
 ## Resources
 
-The poll stats one file per device and, when needed, runs `ss` once. It does
-not walk rotation directories. The hourly pass lists each distinct log
-directory once. That is the expensive part, which is why it is not on the
+The poll stats one file per device and, when needed, runs `ss` once. A dated
+name also lists that one directory so the newest day can be chosen. It does
+not walk rotation trees or read file contents. Opening a device card lists
+that directory on demand. The hourly pass lists each distinct log directory
+once. That hourly walk is the expensive part, which is why it is not on the
 5-second loop.
 
 The optional timer unit runs the size command at a lower CPU and I/O priority
@@ -171,7 +185,9 @@ The container lab in [../lab/README.md](../lab/README.md) is the test bed for
 monitor changes. A collector container runs rsyslog and a monitor built
 from the working tree. More than ten example containers send syslog, and the
 collector pins a few files so the page also shows missing, stale, empty,
-symlink, and future-mtime rows. The dashboard is at `http://127.0.0.1:18080/`.
+symlink, and future-mtime rows. It also writes untracked dated logs so **Not
+in inventory** has adoption cards for `name-date-syslog.log`. The dashboard
+is at `http://127.0.0.1:18080/`.
 
 ```bash
 docker compose -f lab/compose.yaml up -d --build

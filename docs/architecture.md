@@ -40,7 +40,7 @@ One long-running process does both jobs. They do not share a loop.
 | Loop | Default | What it touches | What it avoids |
 | --- | --- | --- | --- |
 | Activity | Every 5 seconds (`--poll`) | `Lstat` of each current log, and one `ss` call if any device is TCP. A dated name lists that one directory and stats the newest day | File contents, rotations, recursive walks |
-| Discovery | About every 30 seconds (`--discover-interval`) | One listing of each `log_directories` entry, then `Lstat` of a new active log | File contents, symlinks, rotations inside an address directory |
+| Discovery | About every 30 seconds (`--discover-interval`) | One listing of each `log_directories` entry, then `Lstat` of each new `*.log` file. Days of one dated name are one candidate | File contents, symlinks, rotations inside an address directory |
 | Stored size | About every 1 hour (`--size-interval`) | One directory listing per log directory, then `Lstat` of matching names | Decompressing archives, following symlinks, reading bytes |
 
 The size pass also runs at startup when `sizes.json` is missing or older than
@@ -204,14 +204,15 @@ be one discovery would offer. A failed check does not change `devices.json`.
 | Package | Responsibility |
 | --- | --- |
 | `internal/inventory` | Load JSON, reject duplicates and unsafe paths, resolve `{source_ip}`, save `log_directories`, and append adopted or ignored sources |
-| `internal/discover` | List untracked regular files in `log_directories` without reading them |
+| `internal/discover` | List untracked sources in `log_directories` without reading them. One child directory is one candidate |
+| `internal/logname` | Recognize `YYYYMMDD` and `YYYY-MM-DD` in a filename and choose the newest day |
 | `internal/activity` | Classify the current log from `Lstat` |
 | `internal/session` | Parse `ss -H -t -n state established` |
 | `internal/status` | Combine the two signals |
-| `internal/storage` | Hourly on-disk total for one device |
+| `internal/storage` | Hourly on-disk total for one device, and the directory listing behind a device card |
 | `internal/snapshot` | Row model, sort, summary, and the `sizes.json` file |
 | `internal/engine` | Poll loop, size loop, inventory reload, subscribers |
-| `internal/dashboard` | HTML page |
+| `internal/dashboard` | HTML page, including the device detail card |
 | `internal/server` | Loopback HTTP server |
 | `internal/demo` | Synthetic fleet for a workstation demo |
 | `internal/cli` | `serve`, `size`, `check`, `validate`, `configure`, `demo` |

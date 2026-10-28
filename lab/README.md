@@ -74,8 +74,10 @@ collector container is recreated.
 The collector also writes untracked dated logs before the monitor starts, so
 **Not in inventory** opens with a set of adoption cards. Each address below is
 one card. Days of the same `name-date-syslog.log` (or `name-date-messages.log`)
-series are one choice, and the choice points at the 2026-10-28 file. `notes.txt`
-and `wan-router-03-20261027-syslog.log.1` are not cards.
+series are one choice, and the choice points at the 2026-10-28 file. After
+adoption, a newer date in that series is followed without editing
+`devices.json`. Selecting the new row lists every file in that directory.
+`notes.txt` and `wan-router-03-20261027-syslog.log.1` are not cards.
 
 | Suggested source | Address | Files |
 | --- | --- | --- |

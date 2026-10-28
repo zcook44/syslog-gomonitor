@@ -25,7 +25,7 @@ Operator documentation, including data flow and dark-site install, is in
 | Reporting | The device's current log is a regular file and was written within `stale_after_seconds` (default 900). Missing, empty, and older files need attention. |
 | Connection | TCP devices need an established session from the configured source IP to the local `tcp_port` (default 514), as reported by `ss`. UDP has no connection. If `ss` fails, the connection is **Unknown**, not disconnected. |
 | Active file | Size of the current log, taken from the same stat as the freshness check. |
-| Stored logs | Sum of that log plus rotated siblings in the same directory (`syslog.log.1`, `syslog.log-20261022.gz`, and similar). Measured about once an hour. Symlinks are not followed, and `*.offset` / `*.state` files are not counted. |
+| Stored logs | Sum of that log plus rotated siblings in the same directory (`syslog.log.1`, `syslog.log-20261022.gz`, and similar). A dated name such as `edge-router-01-20261028-syslog.log` also includes the other days of that series. Measured about once an hour. Symlinks are not followed, and `*.offset` / `*.state` files are not counted. |
 | Overall | **Healthy** only when the log is recent. TCP also requires an established session. A definite problem outranks an unknown signal. |
 
 The page has a search box and the summary cards filter the table. Clicking the
@@ -33,6 +33,8 @@ card that is already selected clears that filter. Search and cards apply
 together and stay in place when the page updates. When `log_directories` is
 set, **Not in inventory** and **Ignored** are extra cards. Either one replaces
 the device table until you select it again or return to a device card.
+Selecting a device row opens a card with that device's status and the files
+in its log directory. Names and sizes only.
 
 A quiet device can be fine and still look stale. Give it a longer silence limit
 than the gap between its messages, or send a periodic heartbeat. A new empty
@@ -85,24 +87,38 @@ until you have checked rule order, disk, SELinux, and rotation. Run
 ## Adopting a device
 
 A file that shows up under a watched directory is not a dashboard row until it
-is in the inventory. About every 30 seconds the service lists `log_directories`
-and offers regular files that are not already devices. The usual new switch is
-`{directory}/{source_ip}/syslog.log`.
+is in the inventory. About every 30 seconds the service lists `log_directories`.
+Each child directory is one card. Every regular `*.log` file directly inside it
+is a convention on that card, so `syslog.log` and `messages.log` are choices
+on one device. A calendar date in the name is part of that convention:
+`edge-router-01-20261028-syslog.log` and `edge-router-01-20261029-syslog.log`
+are one choice, and `2026-10-28` is recognized the same way. The card points
+at the newest day. A loose file in the watched directory is its own card.
+The usual new switch is still `{directory}/{source_ip}/syslog.log`.
 
 **Not in inventory** and **Ignored** are summary cards. The device table stays
 up until you select one. Selecting it again returns to the devices.
 
-On an untracked file, **Adopt** writes a device into `devices.json`. The name is
-required. The source address is taken from the path when the directory or file
-name is an address; otherwise you enter it. Protocol defaults to UDP. Choose
-TCP, and a port if it is not the inventory default, when the device keeps a
-session. The page reloads the inventory and starts tracking that file.
+On an untracked card, **Adopt** writes a device into `devices.json`. When the
+directory has more than one convention, choose which log file to monitor.
+The name is required. The source address is taken from the path when the
+directory or file name is an address; otherwise you enter it. Protocol
+defaults to UDP. Choose TCP, and a port if it is not the inventory default,
+when the device keeps a session. The stored path is the file you adopted.
+When that name contains a date, each poll lists the directory and stats the
+newest matching file, so the next day stays the same device. The page reloads
+the inventory and starts tracking that source.
 
-**Ignore** records the path in the inventory's `ignored` list. The file stays
-out of the adoption list and is not monitored. Ignoring a per-address log also
-ignores that source address, so a recreated file for the same address stays
-hidden. **Stop ignoring** removes the entry. Use ignore when a bad syslog rule
-is dropping extra files into a watched directory.
+**Ignore** records every log file on the card. Those paths stay out of the
+adoption list and are not monitored. Ignoring a per-address log also ignores
+that source address, so a recreated file for the same address stays hidden.
+Ignoring one day of a dated name also hides later days of that name. **Stop
+ignoring** removes the entry. Use ignore when a bad syslog rule is dropping
+extra files into a watched directory.
+
+Selecting a device row opens its status and the files in its log directory.
+The active file, other days of a dated name, rotations, and unrelated names
+are labeled separately.
 
 Rotated files, rsyslog `*.offset` and `*.state` files, and symlinks are not
 offered. Discovery does not read log contents and does not follow symlinks.
@@ -113,8 +129,8 @@ offered. Discovery does not read log contents and does not follow symlinks.
 
 The container lab is the place to try monitor changes. It runs rsyslog plus
 this source tree, and example containers send syslog at that collector. Open
-<http://127.0.0.1:18080/>. Directions and the fourteen example rows are in
-[lab/README.md](lab/README.md).
+<http://127.0.0.1:18080/>. Directions, the fourteen example rows, and the
+untracked dated-log cards are in [lab/README.md](lab/README.md).
 
 ```bash
 docker compose -f lab/compose.yaml up -d --build
@@ -241,7 +257,7 @@ These are not extra packages. The service will not report devices correctly with
 - A clock within about a minute of true time. A modification time more than 60 seconds in the future is reported as **Unknown**.
 - On an SELinux-enforcing host, normal labels on the installed paths. `restorecon` from `policycoreutils` can apply them. The install script does not run it.
 
-The dashboard's first view is plain HTML. Live refresh, search, the summary-card filters, and adopt, ignore, and stop ignoring use JavaScript in the browser. Reloading the page shows the latest device table when JavaScript is disabled. Adopt, ignore, and stop ignoring run from that page script.
+The dashboard's first view is plain HTML. Live refresh, search, the summary-card filters, the device detail card, and adopt, ignore, and stop ignoring use JavaScript in the browser. Reloading the page shows the latest device table when JavaScript is disabled. Adopt, ignore, stop ignoring, and the device detail card run from that page script.
 
 The container lab and the single-process demo are not part of the production install. The lab needs Docker Engine with Compose v2. The demo needs Go 1.22 or newer on a workstation.
 
@@ -288,11 +304,12 @@ devices or change a syslog service.
 | Package | Role |
 | --- | --- |
 | `internal/inventory` | Parse and validate the JSON device list, and append adopted or ignored sources |
-| `internal/discover` | List untracked files in the watched directories |
+| `internal/discover` | List untracked sources in the watched directories, one card per directory or loose file |
+| `internal/logname` | Recognize a calendar date in a log filename and pick the newest day |
 | `internal/activity` | Stat the current log, without reading it or following symlinks |
 | `internal/session` | Established TCP sessions from `ss` |
 | `internal/status` | Combine freshness and connection into one outcome |
-| `internal/storage` | Hourly total of the active log and its rotations |
+| `internal/storage` | Hourly total of the active log and its rotations, and the on-demand directory listing for a device card |
 | `internal/engine` | Fast poll, hourly size pass, inventory reload |
 | `internal/dashboard` | HTML status page |
 | `internal/server` | Loopback HTTP server and live updates |

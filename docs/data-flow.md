@@ -102,21 +102,24 @@ change healthy, attention, or unknown.
 ### Adopt and ignore
 
 **Adopt** appends one device to `devices.json` and validates the whole file
-before replacing it. The new object omits `log_path` when the template already
-resolves to that file, and uses `log_directory` when the file is
-`{watched}/{source_ip}/syslog.log` in another watched tree. **Ignore** appends
-the path to `ignored`. A per-address ignore also stores `source_ip`, so that
-sender stays hidden if the file is recreated. **Stop ignoring** deletes that
-entry. The process reloads the inventory immediately. A failed check does not
-change the file.
+before replacing it. The stored path is the convention selected on the card.
+When that name contains a calendar date, later polls follow the newest
+matching file in the same directory. The new object omits `log_path` when the
+template already resolves to that file, and uses `log_directory` when the file
+is `{watched}/{source_ip}/syslog.log` in another watched tree. **Ignore**
+appends every log file on the card to `ignored`. A per-address ignore also
+stores `source_ip`, so that sender stays hidden if the file is recreated.
+Ignoring one day of a dated name hides later days of that name. **Stop
+ignoring** deletes that entry. The process reloads the inventory immediately.
+A failed check does not change the file.
 
 ## What each loop touches
 
 | Loop | Default | Reads | Leaves alone |
 | --- | --- | --- | --- |
 | Activity | 5s | `Lstat` of each current log, and one `ss` call when a device uses TCP. A dated name lists that directory and stats the newest day | File contents, rotations, recursive walks |
-| Discovery | 30s | One listing of each log directory, then `Lstat` of each new `*.log` file | Contents, symlinks, rotations inside an address directory |
-| Stored size | 1h | One listing per log directory, then `Lstat` of the active file and rotations | Decompressing archives, following symlinks, reading bytes |
+| Discovery | 30s | One listing of each log directory, then `Lstat` of each new `*.log` file. Days of one dated name are one candidate | Contents, symlinks, rotations inside an address directory |
+| Stored size | 1h | One listing per log directory, then `Lstat` of the active file, its rotations, and every day of a dated series | Decompressing archives, following symlinks, reading bytes |
 
 ## How one device becomes a row
 
@@ -153,11 +156,14 @@ keeps the open card.
 | Devices | Clear a status filter and show the device table. |
 | Healthy, Needs attention, Unknown | Show only that status. Click the selected card again to clear it. |
 | Stored logs | Not a filter. Total bytes from successful size measurements. |
-| Not in inventory | Hide the device table and list files discovery found. |
+| Not in inventory | Hide the device table and list one card per untracked directory or loose file. |
 | Ignored | Hide the device table and list paths recorded in `ignored`. |
 
-Card clicks run in the browser and do not change the snapshot. Adopt, ignore,
-and stop ignoring are the actions that rewrite `devices.json`.
+Selecting a device row opens a card with that device's status and the files
+in its log directory. The card calls `GET /api/device?source_ip=` and does not
+change the inventory. Summary-card clicks run in the browser and do not change
+the snapshot. Adopt, ignore, and stop ignoring are the actions that rewrite
+`devices.json`.
 
 ## What crosses the HTTP boundary
 
@@ -167,6 +173,7 @@ The listener defaults to `127.0.0.1:8080`. Nothing else is bound.
 | --- | --- | --- |
 | `GET /` | Engine to browser | HTML status page. Inventory text is escaped. |
 | `GET /api/status` | Engine to browser | The same snapshot as JSON. |
+| `GET /api/device?source_ip=` | Engine to browser | One device's status and the names in its log directory. Contents are not included. |
 | `GET /events` | Engine to browser | Server-Sent Events: board markup and check time. |
 | `GET /healthz` | Engine to browser | The text `ok`. |
 | `POST /api/adopt` | Browser to `devices.json` | Name, log path, protocol. Optional source IP and TCP port. |
