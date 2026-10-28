@@ -6,8 +6,8 @@ networks:
   lab:
     ipam:
       config:
-        - subnet: 10.88.0.0/24
-          gateway: 10.88.0.1
+        - subnet: 10.188.0.0/24
+          gateway: 10.188.0.1
 
 x-sender: &sender
   build: ./sender
@@ -23,7 +23,7 @@ services:
     image: syslog-gomonitor-lab-collector:local
     networks:
       lab:
-        ipv4_address: 10.88.0.2
+        ipv4_address: 10.188.0.2
     ports:
       - "127.0.0.1:18080:8080"
     restart: unless-stopped
@@ -36,7 +36,7 @@ services:
       INTERVAL: "5"
     networks:
       lab:
-        ipv4_address: 10.88.0.10
+        ipv4_address: 10.188.0.10
 
   core-switch-01:
     <<: *sender
@@ -46,7 +46,7 @@ services:
       INTERVAL: "5"
     networks:
       lab:
-        ipv4_address: 10.88.0.11
+        ipv4_address: 10.188.0.11
 
   dist-switch-02:
     <<: *sender
@@ -56,7 +56,7 @@ services:
       DEVICE: dist-switch-02
     networks:
       lab:
-        ipv4_address: 10.88.0.12
+        ipv4_address: 10.188.0.12
 
   wan-router-02:
     <<: *sender
@@ -66,7 +66,7 @@ services:
       INTERVAL: "20"
     networks:
       lab:
-        ipv4_address: 10.88.0.14
+        ipv4_address: 10.188.0.14
 
   core-router-02:
     <<: *sender
@@ -76,7 +76,7 @@ services:
       DEVICE: core-router-02
     networks:
       lab:
-        ipv4_address: 10.88.0.15
+        ipv4_address: 10.188.0.15
 
   dmz-firewall-01:
     <<: *sender
@@ -86,7 +86,7 @@ services:
       DEVICE: dmz-firewall-01
     networks:
       lab:
-        ipv4_address: 10.88.0.17
+        ipv4_address: 10.188.0.17
 
   branch-router-01:
     <<: *sender
@@ -96,7 +96,7 @@ services:
       INTERVAL: "5"
     networks:
       lab:
-        ipv4_address: 10.88.0.18
+        ipv4_address: 10.188.0.18
 
   idf-switch-04:
     <<: *sender
@@ -106,7 +106,7 @@ services:
       DEVICE: idf-switch-04
     networks:
       lab:
-        ipv4_address: 10.88.0.19
+        ipv4_address: 10.188.0.19
 
   vpn-gw-01:
     <<: *sender
@@ -116,7 +116,7 @@ services:
       INTERVAL: "5"
     networks:
       lab:
-        ipv4_address: 10.88.0.20
+        ipv4_address: 10.188.0.20
 
   wireless-01:
     <<: *sender
@@ -126,7 +126,7 @@ services:
       INTERVAL: "5"
     networks:
       lab:
-        ipv4_address: 10.88.0.21
+        ipv4_address: 10.188.0.21
 
   ups-01:
     <<: *sender
@@ -136,7 +136,7 @@ services:
       INTERVAL: "30"
     networks:
       lab:
-        ipv4_address: 10.88.0.22
+        ipv4_address: 10.188.0.22
 
   firewall-01:
     <<: *sender
@@ -146,4 +146,4 @@ services:
       DEVICE: firewall-01
     networks:
       lab:
-        ipv4_address: 10.88.0.30
+        ipv4_address: 10.188.0.30

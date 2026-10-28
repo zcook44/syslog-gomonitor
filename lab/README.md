@@ -47,20 +47,20 @@ cannot hold.
 
 | Device | Address | How it reports | Expected row |
 | --- | --- | --- | --- |
-| `edge-router-01` | 10.88.0.10 | UDP every 5s | Healthy. Rotations and a note file sit beside the live log; the note is not counted. |
-| `core-switch-01` | 10.88.0.11 | TCP session held open, a message every 5s | Healthy. |
-| `vpn-gw-01` | 10.88.0.20 | TCP session held open, a message every 5s | Healthy. |
-| `branch-router-01` | 10.88.0.18 | UDP every 5s | Healthy, with a large rotated file already on disk. |
-| `wireless-01` | 10.88.0.21 | UDP every 5s | Healthy. |
-| `ups-01` | 10.88.0.22 | UDP every 30s | Healthy. |
-| `dist-switch-02` | 10.88.0.12 | One UDP burst, then the collector ages the file | Stale. Needs attention. |
-| `idf-switch-04` | 10.88.0.19 | One UDP burst, then the file is aged further | Stale. Needs attention. |
-| `firewall-01` | 10.88.0.30 | One UDP burst into `/var/log/firewall`, then the collector empties the active file and keeps an archive | Empty active file, stored size still includes the archive. |
-| `wan-router-02` | 10.88.0.14 | TCP connect, send, close, every 20s | Recent log, no lasting session. Needs attention. It can show established for a moment while it sends. |
-| `core-router-02` | 10.88.0.15 | TCP session held open after one message; the collector ages that file | Connected and stale. Needs attention. |
-| `dmz-firewall-01` | 10.88.0.17 | One UDP burst, then the collector sets a future modification time | Unknown. |
-| `access-switch-03` | 10.88.0.13 | No sender and no file | Missing. Needs attention. |
-| `lab-switch-01` | 10.88.0.16 | No sender. The collector symlinks this path at the edge router's log | Unknown. The target's bytes are not counted again. |
+| `edge-router-01` | 10.188.0.10 | UDP every 5s | Healthy. Rotations and a note file sit beside the live log; the note is not counted. |
+| `core-switch-01` | 10.188.0.11 | TCP session held open, a message every 5s | Healthy. |
+| `vpn-gw-01` | 10.188.0.20 | TCP session held open, a message every 5s | Healthy. |
+| `branch-router-01` | 10.188.0.18 | UDP every 5s | Healthy, with a large rotated file already on disk. |
+| `wireless-01` | 10.188.0.21 | UDP every 5s | Healthy. |
+| `ups-01` | 10.188.0.22 | UDP every 30s | Healthy. |
+| `dist-switch-02` | 10.188.0.12 | One UDP burst, then the collector ages the file | Stale. Needs attention. |
+| `idf-switch-04` | 10.188.0.19 | One UDP burst, then the file is aged further | Stale. Needs attention. |
+| `firewall-01` | 10.188.0.30 | One UDP burst into `/var/log/firewall`, then the collector empties the active file and keeps an archive | Empty active file, stored size still includes the archive. |
+| `wan-router-02` | 10.188.0.14 | TCP connect, send, close, every 20s | Recent log, no lasting session. Needs attention. It can show established for a moment while it sends. |
+| `core-router-02` | 10.188.0.15 | TCP session held open after one message; the collector ages that file | Connected and stale. Needs attention. |
+| `dmz-firewall-01` | 10.188.0.17 | One UDP burst, then the collector sets a future modification time | Unknown. |
+| `access-switch-03` | 10.188.0.13 | No sender and no file | Missing. Needs attention. |
+| `lab-switch-01` | 10.188.0.16 | No sender. The collector symlinks this path at the edge router's log | Unknown. The target's bytes are not counted again. |
 
 Search and the summary cards work on this page the same way they do in
 production. The collector listens on the lab bridge only; host port 514 is not

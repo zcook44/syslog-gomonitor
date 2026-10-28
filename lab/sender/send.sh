@@ -15,8 +15,8 @@ message() {
     core-switch-01) text="%LINK-3-UPDOWN: Interface GigabitEthernet1/0/24, changed state to up" ;;
     dist-switch-02) text="%SPANTREE-5-TOPOTRAP: Topology change for VLAN 20, then silence" ;;
     firewall-01) text="%FW-4-DENY: inbound tcp 203.0.113.10:443 denied by policy edge" ;;
-    wan-router-02) text="%BGP-5-ADJCHANGE: neighbor 10.88.0.50 Up" ;;
-    core-router-02) text="%BGP-5-ADJCHANGE: neighbor 10.88.0.51 Down, session remains" ;;
+    wan-router-02) text="%BGP-5-ADJCHANGE: neighbor 10.188.0.50 Up" ;;
+    core-router-02) text="%BGP-5-ADJCHANGE: neighbor 10.188.0.51 Down, session remains" ;;
     dmz-firewall-01) text="%FW-4-DENY: clock step will leave this file in the future" ;;
     branch-router-01) text="%SYS-5-CONFIG_I: Configured from console by admin" ;;
     idf-switch-04) text="%LINK-3-UPDOWN: Interface GigabitEthernet1/0/1, changed state to down" ;;
