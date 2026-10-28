@@ -67,7 +67,30 @@ production. The collector listens on the lab bridge only; host port 514 is not
 published.
 
 The lab inventory sets `log_directories`, so the summary includes **Not in
-inventory** and **Ignored**. The example files are already devices, or they
-are rotations and notes beside a device log, so both counts stay at zero
-unless a sender writes a new address directory. Adopt and ignore on that page
-rewrite the lab inventory inside the collector container.
+inventory** and **Ignored**. Adopt and ignore on that page rewrite the lab
+inventory inside the collector container. That rewrite lasts until the
+collector container is recreated.
+
+The collector also writes untracked dated logs before the monitor starts, so
+**Not in inventory** opens with a set of adoption cards. Each address below is
+one card. Days of the same `name-date-syslog.log` (or `name-date-messages.log`)
+series are one choice, and the choice points at the 2026-10-28 file. `notes.txt`
+and `wan-router-03-20261027-syslog.log.1` are not cards.
+
+| Suggested source | Address | Files |
+| --- | --- | --- |
+| `access-switch-05` | 10.188.0.41 | `access-switch-05-20261026-syslog.log` through `20261028` |
+| `dist-switch-03` | 10.188.0.42 | Same three days, written `2026-10-26` |
+| `idf-switch-05` | 10.188.0.43 | Compact date, both `syslog` and `messages` |
+| `wan-router-03` | 10.188.0.44 | Compact `syslog`, plus a note and a `.1` rotation |
+| `wireless-02` | 10.188.0.45 | Dashed date, both `syslog` and `messages` |
+| `vpn-gw-02` | 10.188.0.46 | Compact `syslog`, three days |
+| `ups-02` | 10.188.0.47 | Compact `syslog`, 2026-10-25 through 2026-10-28 |
+| `branch-router-02` | 10.188.0.48 | Dashed `syslog`, three days |
+| `core-router-03` | 10.188.0.49 | Compact `syslog`, three days |
+| `lab-ap-02` | 10.188.0.50 | Compact date, both `syslog` and `messages` |
+| `mgmt-switch-01` | none (file in `/var/log/remote`) | Compact `syslog`, three days |
+| `printer-01` | none | Dashed `syslog`, three days |
+| `badge-reader-01` | none | Compact `syslog`, three days |
+| `hvac-01` | none | Dashed `syslog`, three days |
+| `camera-nvr-01` | none | Compact `syslog` for 2026-10-28 only |

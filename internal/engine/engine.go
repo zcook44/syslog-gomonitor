@@ -16,6 +16,7 @@ import (
 	"syslog-gomonitor/internal/activity"
 	"syslog-gomonitor/internal/discover"
 	"syslog-gomonitor/internal/inventory"
+	"syslog-gomonitor/internal/logname"
 	"syslog-gomonitor/internal/session"
 	"syslog-gomonitor/internal/snapshot"
 	"syslog-gomonitor/internal/status"
@@ -502,14 +503,15 @@ func (e *Engine) notify(snap snapshot.Snapshot) {
 }
 
 func (e *Engine) row(device inventory.Device, now time.Time, sessions map[session.Endpoint]struct{}, tcpErr error, measuredAt time.Time, sizes map[string]storage.Measurement) snapshot.Device {
-	obs := activity.Inspect(device.LogPath, now, time.Duration(device.StaleAfterSeconds)*time.Second)
+	activePath := logname.Active(device.LogPath)
+	obs := activity.Inspect(activePath, now, time.Duration(device.StaleAfterSeconds)*time.Second)
 	conn, connDetail := connectionFor(device, sessions, tcpErr)
 	row := snapshot.Device{
 		Name:              device.Name,
 		SourceIP:          device.SourceIP,
 		Protocol:          device.Protocol,
 		TCPPort:           device.TCPPort,
-		LogPath:           device.LogPath,
+		LogPath:           activePath,
 		StaleAfterSeconds: device.StaleAfterSeconds,
 		LogStatus:         obs.Status,
 		LogDetail:         obs.Detail,
@@ -590,6 +592,7 @@ func snapshotCandidates(found []discover.Candidate) []snapshot.Candidate {
 			SuggestedName: item.SuggestedName,
 			ActiveBytes:   item.ActiveBytes,
 			Detail:        item.Detail,
+			LogFiles:      candidateFiles(item.LogFiles),
 		}
 		if !item.LastWrite.IsZero() {
 			utc := item.LastWrite.UTC()
@@ -600,12 +603,43 @@ func snapshotCandidates(found []discover.Candidate) []snapshot.Candidate {
 	return rows
 }
 
+func candidateFiles(files []discover.LogFile) []snapshot.CandidateFile {
+	if len(files) == 0 {
+		return nil
+	}
+	out := make([]snapshot.CandidateFile, len(files))
+	for i, file := range files {
+		out[i] = snapshot.CandidateFile{
+			Path:        file.Path,
+			Name:        file.Name,
+			ActiveBytes: file.ActiveBytes,
+		}
+		if !file.LastWrite.IsZero() {
+			utc := file.LastWrite.UTC()
+			out[i].LastWrite = &utc
+		}
+	}
+	return out
+}
+
+func sameCandidateFiles(a, b []snapshot.CandidateFile) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Path != b[i].Path || a[i].ActiveBytes != b[i].ActiveBytes {
+			return false
+		}
+	}
+	return true
+}
+
 func sameCandidates(a, b []snapshot.Candidate) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for i := range a {
-		if a[i].LogPath != b[i].LogPath || a[i].SourceIP != b[i].SourceIP || a[i].ActiveBytes != b[i].ActiveBytes || !sameTime(a[i].LastWrite, b[i].LastWrite) {
+		if a[i].LogPath != b[i].LogPath || a[i].SourceIP != b[i].SourceIP || a[i].ActiveBytes != b[i].ActiveBytes || !sameTime(a[i].LastWrite, b[i].LastWrite) || !sameCandidateFiles(a[i].LogFiles, b[i].LogFiles) {
 			return false
 		}
 	}

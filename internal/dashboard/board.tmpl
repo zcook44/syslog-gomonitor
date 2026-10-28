@@ -14,7 +14,7 @@
 {{if .ShowAdoption}}
 <section id="adoption" class="adoption" data-view-panel="candidates" hidden data-revision="{{.Revision}}" aria-label="Untracked sources">
   <h2>Not in the inventory</h2>
-  <p class="note">These files are in a watched directory and are not tracked. Adopt adds the device to the inventory. Ignore hides a file here without monitoring it, which is how a bad syslog config dumping extra files is filtered out.</p>
+  <p class="note">Each card is one directory, or one loose file. When a directory has more than one log file, choose which one to monitor. Adopt adds that file to the inventory. Ignore hides every log file on the card.</p>
   {{if .DiscoverNote}}<p class="note bad">{{.DiscoverNote}}</p>{{end}}
   {{if .Candidates}}
   <div class="adopt-list">
@@ -22,10 +22,19 @@
     <article class="adopt-card" data-path="{{.Path}}" data-source-ip="{{.Source}}" data-ip-locked="{{if .IPLocked}}true{{else}}false{{end}}">
       <div>
         <div class="device">{{.Name}}</div>
-        <div class="path" title="{{.Path}}">{{.Path}}</div>
+        <div class="path" title="{{if .Choose}}{{.Dir}}{{else}}{{.Path}}{{end}}">{{if .Choose}}{{.Dir}}{{else}}{{.Path}}{{end}}</div>
         <div class="meta">{{.Detail}}</div>
       </div>
       <div class="adopt-fields">
+        {{if .Choose}}
+        <label>Log file
+          <select data-field="logfile">
+            {{range .Files}}
+            <option value="{{.Path}}" data-meta="{{.Meta}}"{{if .Selected}} selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+        </label>
+        {{end}}
         <label>Name <input data-field="name" value="{{.Name}}" autocomplete="off" spellcheck="false" maxlength="128"></label>
         <label>Source IP {{if .IPLocked}}<input data-field="source" value="{{.Source}}" readonly>{{else}}<input data-field="source" value="" placeholder="192.0.2.10" autocomplete="off" spellcheck="false">{{end}}</label>
         <label>Protocol
@@ -35,7 +44,7 @@
           </select>
         </label>
         <label>TCP port <input data-field="port" type="number" min="1" max="65535" inputmode="numeric" placeholder="default"></label>
-        <div class="meta">Last write {{.LastTime}}{{if .LastDay}} {{.LastDay}}{{end}} · {{.Active}}</div>
+        <div class="meta" data-file-meta>{{.FileMeta}}</div>
       </div>
       <div class="actions">
         <button type="button" class="action" data-action="adopt">Adopt</button>
@@ -72,7 +81,7 @@
 {{end}}
 <div id="device-board" class="table-wrap">
 <table>
-<caption>Expected syslog sources. Problems are listed first. Stored size counts the active log and rotated files beside it.</caption>
+<caption>Expected syslog sources. Select a device for its status and the files in its log directory. Problems are listed first.</caption>
 <thead>
 <tr>
 <th scope="col">Device</th>
@@ -87,7 +96,7 @@
 </thead>
 <tbody>
 {{range .Rows}}
-<tr class="row {{.StatusClass}}" data-status="{{.StatusClass}}" data-search="{{.Search}}">
+<tr class="row {{.StatusClass}}" data-status="{{.StatusClass}}" data-search="{{.Search}}" data-source="{{.Source}}" tabindex="0" aria-label="Show details for {{.Name}}">
 <td><div class="device">{{.Name}}</div><div class="path" title="{{.Path}}">{{.Path}}</div></td>
 <td><div class="mono">{{.Source}}</div><div class="meta">{{.Transport}}</div></td>
 <td><div>{{.LogLabel}}</div><div class="meta">{{.LogDetail}}</div></td>

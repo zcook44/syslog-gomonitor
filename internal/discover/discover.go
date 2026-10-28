@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"syslog-gomonitor/internal/inventory"
+	"syslog-gomonitor/internal/logname"
 )
 
 const (
@@ -22,9 +23,20 @@ const (
 	maxExamined = 4096
 )
 
-// Candidate is one regular file the dashboard can adopt or ignore.
+// LogFile is one log convention inside a candidate directory. A dated name is
+// collapsed to its pattern, and Path is the newest file of that pattern.
+type LogFile struct {
+	Path        string
+	Name        string
+	LastWrite   time.Time
+	ActiveBytes int64
+}
+
+// Candidate is one child directory, or one loose file, the dashboard can adopt
+// or ignore. LogFiles lists every *.log convention in that directory.
 type Candidate struct {
 	LogPath       string
+	LogFiles      []LogFile
 	SourceIP      string
 	SuggestedName string
 	LastWrite     time.Time
@@ -38,15 +50,14 @@ type Result struct {
 	Note       string
 }
 
-// Scan walks each configured log directory one level down. Address directories
-// contribute their active log. Other regular files in the directory itself are
-// listed too, except rotations and state files. Known and ignored sources are
-// omitted.
+// Scan walks each configured log directory one level down. Each regular
+// *.log file inside a child directory is its own candidate. Other regular
+// files in the directory itself are listed too, except rotations and state
+// files. Known and ignored sources are omitted.
 func Scan(ctx context.Context, inv inventory.Inventory) Result {
 	if len(inv.LogDirectories) == 0 {
 		return Result{}
 	}
-	active := inventory.AddressFile(inv.LogPathTemplate)
 	used := map[string]struct{}{}
 	for _, device := range inv.Devices {
 		used[strings.ToLower(device.Name)] = struct{}{}
@@ -83,10 +94,45 @@ func Scan(ctx context.Context, inv inventory.Inventory) Result {
 				stopped = true
 				break
 			}
-			budget--
-			logPath := path.Join(dir, entry.Name(), active)
-			found = appendCandidate(found, inv, used, logPath, false)
+			child := path.Join(dir, entry.Name())
+			childEntries, err := os.ReadDir(child)
+			if err != nil {
+				budget--
+				notes = append(notes, "Cannot read "+child+": "+unwrap(err)+".")
+				continue
+			}
+			var logs []LogFile
+			var sourceIP string
+			for _, childEntry := range childEntries {
+				if budget == 0 {
+					stopped = true
+					break
+				}
+				budget--
+				name := childEntry.Name()
+				if strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".log") {
+					continue
+				}
+				if childEntry.Type()&os.ModeSymlink != 0 || !childEntry.Type().IsRegular() {
+					continue
+				}
+				logPath := path.Join(child, name)
+				file, ip, ok := candidateFile(inv, logPath)
+				if !ok {
+					continue
+				}
+				logs = append(logs, file)
+				if sourceIP == "" {
+					sourceIP = ip
+				}
+			}
+			if len(logs) == 0 || directoryTracked(inv, child) {
+				continue
+			}
+			found = append(found, childCandidate(inv, used, sourceIP, logs))
 		}
+		var loose []LogFile
+		looseIP := map[string]string{}
 		for _, entry := range files {
 			if budget == 0 {
 				stopped = true
@@ -94,8 +140,14 @@ func Scan(ctx context.Context, inv inventory.Inventory) Result {
 			}
 			budget--
 			logPath := path.Join(dir, entry.Name())
-			found = appendCandidate(found, inv, used, logPath, true)
+			file, ip, ok := candidateFile(inv, logPath)
+			if !ok {
+				continue
+			}
+			loose = append(loose, file)
+			looseIP[file.Path] = ip
 		}
+		found = append(found, looseCandidates(inv, used, loose, looseIP)...)
 		if stopped {
 			notes = append(notes, "Stopped reading "+dir+" after "+strconv.Itoa(maxExamined)+" entries.")
 		}
@@ -107,37 +159,136 @@ func Scan(ctx context.Context, inv inventory.Inventory) Result {
 		return found[i].LogPath < found[j].LogPath
 	})
 	if len(found) > maxShown {
-		notes = append(notes, "Showing "+strconv.Itoa(maxShown)+" of "+strconv.Itoa(len(found))+" untracked files. Ignore the ones listed, or fix the collector writing the rest.")
+		notes = append(notes, "Showing "+strconv.Itoa(maxShown)+" of "+strconv.Itoa(len(found))+" untracked sources. Ignore the ones listed, or fix the collector writing the rest.")
 		found = found[:maxShown]
 	}
 	return Result{Candidates: found, Note: strings.Join(notes, " ")}
 }
 
-func appendCandidate(found []Candidate, inv inventory.Inventory, used map[string]struct{}, logPath string, inRoot bool) []Candidate {
+func candidateFile(inv inventory.Inventory, logPath string) (LogFile, string, bool) {
 	sourceIP, err := inventory.Recognize(inv, logPath)
 	if err != nil {
-		return found
+		return LogFile{}, "", false
 	}
 	info, err := os.Lstat(logPath)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return found
+		return LogFile{}, "", false
 	}
-	detail := "File in a watched directory is not in the inventory."
-	if !inRoot {
-		if sourceIP != "" {
-			detail = "Per-address log is not in the inventory."
-		} else {
-			detail = "Directory in a watched tree is not in the inventory."
+	return LogFile{
+		Path:        logPath,
+		Name:        path.Base(logPath),
+		LastWrite:   info.ModTime(),
+		ActiveBytes: info.Size(),
+	}, sourceIP, true
+}
+
+func childCandidate(inv inventory.Inventory, used map[string]struct{}, sourceIP string, logs []LogFile) Candidate {
+	logs = groupConventions(logs)
+	chosen := logs[0]
+	for _, file := range logs {
+		if file.Name == "syslog.log" || strings.HasSuffix(file.Name, "-syslog.log") {
+			chosen = file
+			break
 		}
 	}
-	return append(found, Candidate{
-		LogPath:       logPath,
+	detail := childDetail(sourceIP, len(logs))
+	if strings.Contains(chosen.Name, "{date}") && len(logs) == 1 {
+		detail = "Monitors the newest " + chosen.Name + " in this directory."
+	}
+	return Candidate{
+		LogPath:       chosen.Path,
+		LogFiles:      logs,
 		SourceIP:      sourceIP,
-		SuggestedName: suggest(inv, logPath, sourceIP, inRoot, used),
-		LastWrite:     info.ModTime(),
-		ActiveBytes:   info.Size(),
+		SuggestedName: suggest(inv, chosen.Path, sourceIP, false, used),
+		LastWrite:     chosen.LastWrite,
+		ActiveBytes:   chosen.ActiveBytes,
 		Detail:        detail,
-	})
+	}
+}
+
+func looseCandidates(inv inventory.Inventory, used map[string]struct{}, logs []LogFile, ips map[string]string) []Candidate {
+	if len(logs) == 0 {
+		return nil
+	}
+	var found []Candidate
+	for _, file := range groupConventions(logs) {
+		detail := "File in a watched directory is not in the inventory."
+		suggestPath := file.Path
+		if series, ok := logname.Parse(path.Base(file.Path)); ok {
+			detail = "Monitors the newest " + file.Name + " in this directory."
+			suggestPath = path.Join(path.Dir(file.Path), series.Stem()+".log")
+		}
+		found = append(found, Candidate{
+			LogPath:       file.Path,
+			LogFiles:      []LogFile{file},
+			SourceIP:      ips[file.Path],
+			SuggestedName: suggest(inv, suggestPath, ips[file.Path], true, used),
+			LastWrite:     file.LastWrite,
+			ActiveBytes:   file.ActiveBytes,
+			Detail:        detail,
+		})
+	}
+	return found
+}
+
+func groupConventions(logs []LogFile) []LogFile {
+	type bucket struct {
+		best LogFile
+		when time.Time
+		set  bool
+	}
+	order := make([]string, 0)
+	groups := map[string]*bucket{}
+	for _, file := range logs {
+		key := "name\x00" + file.Name
+		label := file.Name
+		var when time.Time
+		if series, ok := logname.Parse(file.Name); ok {
+			key = series.Layout + "\x00" + series.Prefix + "\x00" + series.Suffix
+			label = series.Label()
+			when, _ = series.Match(file.Name)
+		}
+		b := groups[key]
+		if b == nil {
+			b = &bucket{}
+			groups[key] = b
+			order = append(order, key)
+		}
+		if !b.set || when.After(b.when) || (when.Equal(b.when) && file.LastWrite.After(b.best.LastWrite)) {
+			file.Name = label
+			b.best = file
+			b.when = when
+			b.set = true
+		}
+	}
+	out := make([]LogFile, 0, len(order))
+	for _, key := range order {
+		out = append(out, groups[key].best)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func directoryTracked(inv inventory.Inventory, child string) bool {
+	for _, device := range inv.Devices {
+		if path.Dir(device.LogPath) == child {
+			return true
+		}
+	}
+	return false
+}
+
+func childDetail(sourceIP string, files int) string {
+	switch {
+	case files > 1 && sourceIP != "":
+		return "Per-address directory has more than one log file. Choose which one to monitor."
+	case files > 1:
+		return "This directory has more than one log file. Choose which one to monitor."
+	case sourceIP != "":
+		return "Per-address log is not in the inventory."
+	default:
+		return "Directory in a watched tree is not in the inventory."
+	}
 }
 
 func splitEntries(entries []os.DirEntry) (dirs, files []os.DirEntry) {

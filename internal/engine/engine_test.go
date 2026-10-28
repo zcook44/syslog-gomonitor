@@ -219,6 +219,34 @@ func TestAdoptAndIgnoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDatedNameFollowsNewestFile(t *testing.T) {
+	dir := t.TempDir()
+	yesterday := filepath.Join(dir, "edge-router-01-20261027-syslog.log")
+	today := filepath.Join(dir, "edge-router-01-20261028-syslog.log")
+	now := time.Date(2026, 10, 28, 15, 0, 0, 0, time.UTC)
+	writeAged(t, yesterday, []byte("old\n"), now.Add(-27*time.Hour))
+	writeAged(t, today, []byte("new\n"), now)
+	if err := os.WriteFile(today+".1", []byte("rotated\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inv, err := inventory.Parse([]byte(`{
+		"log_directories": ["` + dir + `"],
+		"devices": [{"name": "edge-router-01", "source_ip": "192.0.2.10", "protocol": "udp", "log_path": "` + yesterday + `"}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := New(inv, Options{Now: func() time.Time { return now }})
+	snap := eng.Sample(context.Background())
+	if len(snap.Devices) != 1 {
+		t.Fatalf("devices %+v", snap.Devices)
+	}
+	row := snap.Devices[0]
+	if row.LogPath != today || row.LogStatus != status.LogRecent || row.ActiveBytes == nil || *row.ActiveBytes != int64(len("new\n")) {
+		t.Fatalf("row %+v", row)
+	}
+}
+
 func writeAged(t *testing.T, path string, body []byte, when time.Time) {
 	t.Helper()
 	if err := os.WriteFile(path, body, 0o644); err != nil {

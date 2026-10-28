@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"syslog-gomonitor/internal/atomicfile"
+	"syslog-gomonitor/internal/logname"
 )
 
 const (
@@ -125,7 +126,7 @@ func Recognize(inv Inventory, logPath string) (string, error) {
 		return "", user("Rotated and state files are not separate sources.")
 	}
 	parent := path.Dir(cleaned)
-	subdirFile, flatSuffix := templateLayout(inv.LogPathTemplate)
+	_, flatSuffix := templateLayout(inv.LogPathTemplate)
 	inRoot := false
 	for _, dir := range inv.LogDirectories {
 		if parent == dir {
@@ -148,7 +149,7 @@ func Recognize(inv Inventory, logPath string) (string, error) {
 				break
 			}
 		}
-		if !rooted || base != subdirFile {
+		if !rooted || !strings.HasSuffix(base, ".log") {
 			return "", user("That file is not an untracked syslog source.")
 		}
 		if ip, err := canonicalIP(path.Base(parent)); err == nil {
@@ -156,7 +157,7 @@ func Recognize(inv Inventory, logPath string) (string, error) {
 		}
 	}
 	for _, device := range inv.Devices {
-		if device.LogPath == cleaned {
+		if device.LogPath == cleaned || sameDatedSeries(device.LogPath, cleaned) {
 			return "", user("That source is already in the inventory.")
 		}
 		if sourceIP != "" && device.SourceIP == sourceIP {
@@ -164,7 +165,7 @@ func Recognize(inv Inventory, logPath string) (string, error) {
 		}
 	}
 	for _, item := range inv.Ignored {
-		if item.LogPath == cleaned || (sourceIP != "" && item.SourceIP != "" && item.SourceIP == sourceIP) {
+		if item.LogPath == cleaned || sameDatedSeries(item.LogPath, cleaned) || (sourceIP != "" && item.SourceIP != "" && item.SourceIP == sourceIP) {
 			return "", ignoredUser()
 		}
 	}
@@ -338,6 +339,19 @@ func requireRegularFile(logPath string) error {
 	return nil
 }
 
+func sameDatedSeries(a, b string) bool {
+	key := datedSeriesKey(a)
+	return key != "" && key == datedSeriesKey(b)
+}
+
+func datedSeriesKey(logPath string) string {
+	series, ok := logname.Parse(path.Base(logPath))
+	if !ok {
+		return ""
+	}
+	return path.Dir(logPath) + "\x00" + series.Layout + "\x00" + series.Prefix + "\x00" + series.Suffix
+}
+
 func logPathField(inv Inventory, sourceIP, logPath string) *string {
 	if matchesDefault(inv, sourceIP, logPath) || logDirectoryField(inv, sourceIP, logPath) != nil {
 		return nil
@@ -460,11 +474,16 @@ func resolveIgnored(raw []ignoredDoc, directories []string, devices []Device) ([
 	}
 	paths := map[string]struct{}{}
 	addresses := map[string]struct{}{}
+	seriesSeen := map[string]struct{}{}
 	devicePaths := map[string]struct{}{}
 	deviceIPs := map[string]struct{}{}
+	deviceSeries := map[string]struct{}{}
 	for _, device := range devices {
 		devicePaths[device.LogPath] = struct{}{}
 		deviceIPs[device.SourceIP] = struct{}{}
+		if key := datedSeriesKey(device.LogPath); key != "" {
+			deviceSeries[key] = struct{}{}
+		}
 	}
 	resolved := make([]Ignored, 0, len(raw))
 	for i, item := range raw {
@@ -481,6 +500,15 @@ func resolveIgnored(raw []ignoredDoc, directories []string, devices []Device) ([
 		}
 		if _, tracked := devicePaths[logPath]; tracked {
 			return nil, fmt.Errorf("%s log path %s is already a device", label, logPath)
+		}
+		if key := datedSeriesKey(logPath); key != "" {
+			if _, dup := seriesSeen[key]; dup {
+				return nil, fmt.Errorf("duplicate ignored dated log: %s", logPath)
+			}
+			if _, tracked := deviceSeries[key]; tracked {
+				return nil, fmt.Errorf("%s log path %s is already a device", label, logPath)
+			}
+			seriesSeen[key] = struct{}{}
 		}
 		var sourceIP string
 		if item.SourceIP != nil {

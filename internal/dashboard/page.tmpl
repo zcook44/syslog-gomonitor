@@ -102,7 +102,8 @@
     border: 1px solid var(--line); border-radius: .55rem; padding: .55rem .7rem;
   }
   .search input:focus-visible, button.card:focus-visible,
-  .theme-switch button:focus-visible, #back-to-top:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .theme-switch button:focus-visible, #back-to-top:focus-visible,
+  tr.row:focus-visible, #device-detail button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: .7rem;
     min-width: 8.2rem; padding: .75rem .95rem; box-shadow: var(--shadow);
@@ -122,6 +123,8 @@
   th, td { padding: .7rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
   th { background: var(--head); font-size: .82rem; letter-spacing: .02em; white-space: nowrap; }
   tr:last-child td { border-bottom: 0; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: var(--head); }
   .row.attention td:first-child { box-shadow: inset 3px 0 0 var(--attention-fg); }
   .row.unknown td:first-child { box-shadow: inset 3px 0 0 var(--unknown-fg); }
   .row.healthy td:first-child { box-shadow: inset 3px 0 0 var(--healthy-fg); }
@@ -176,6 +179,24 @@
   button.action { background: var(--accent); color: var(--bg); border: 0; }
   button.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line); }
   button.action:disabled, button.quiet:disabled { cursor: default; opacity: .6; }
+  #device-detail {
+    width: min(46rem, calc(100vw - 2rem)); max-height: min(86vh, 44rem);
+    border: 1px solid var(--line); border-radius: .9rem; padding: 0;
+    background: var(--card); color: var(--ink); box-shadow: 0 18px 50px rgba(16, 24, 32, .28);
+  }
+  #device-detail::backdrop { background: rgba(16, 24, 32, .45); }
+  .detail-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; padding: 1rem 1rem .25rem; }
+  .detail-head h2 { margin: 0; font-size: 1.25rem; }
+  .detail-body { padding: 0 1rem 1rem; overflow: auto; max-height: calc(86vh - 4.5rem); }
+  .detail-grid { display: grid; grid-template-columns: 8.5rem 1fr; gap: .35rem .75rem; margin: .4rem 0 1rem; }
+  .detail-grid dt { color: var(--muted); }
+  .detail-grid dd { margin: 0; }
+  .detail-files { width: 100%; border-collapse: collapse; margin-top: .4rem; }
+  .detail-files th, .detail-files td { padding: .45rem .4rem; }
+  .detail-files .path { max-width: none; white-space: normal; overflow: visible; text-overflow: clip; }
+  .kind { font-size: .78rem; font-weight: 700; color: var(--muted); }
+  .kind.active { color: var(--healthy-fg); }
+  .kind.series, .kind.rotation { color: var(--accent); }
   footer { padding: 1rem 0 2rem; }
   footer p { margin: 0; }
 </style>
@@ -217,6 +238,13 @@
   <div id="board">{{.Board}}</div>
   <p id="action-status" class="note" role="status"></p>
 </main>
+<dialog id="device-detail" aria-labelledby="detail-title">
+  <div class="detail-head">
+    <h2 id="detail-title">Device</h2>
+    <button type="button" class="quiet" id="detail-close">Close</button>
+  </div>
+  <div id="detail-body" class="detail-body"></div>
+</dialog>
 <footer>
   <p>A device is healthy when its own log file was written within its silence limit. TCP devices also need an established session to the configured port. UDP has no connection to check. The active file size is the current log. Stored logs add rotated files in the same directory and are not recounted on every status check. Log contents are never read or shown.</p>
 </footer>
@@ -227,6 +255,13 @@
   var live = document.getElementById("live");
   var liveText = document.getElementById("live-text");
   var board = document.getElementById("board");
+  var detail = document.getElementById("device-detail");
+  var detailTitle = document.getElementById("detail-title");
+  var detailBody = document.getElementById("detail-body");
+  var detailClose = document.getElementById("detail-close");
+  var openSource = "";
+  var detailToken = 0;
+  var detailLoadedAt = 0;
   var search = document.getElementById("device-search");
   var matchCount = document.getElementById("match-count");
   var link = "up";
@@ -353,11 +388,38 @@
     if (list.parentNode) list.parentNode.replaceChild(note, list);
   }
 
+  function cardPaths(card) {
+    var paths = [];
+    var sel = card.querySelector("[data-field=logfile]");
+    if (sel) {
+      for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value) paths.push(sel.options[i].value);
+      }
+    }
+    var own = card.getAttribute("data-path") || "";
+    if (own && paths.indexOf(own) < 0) paths.push(own);
+    return paths;
+  }
+
+  function chosenLog(card) {
+    var sel = card.querySelector("[data-field=logfile]");
+    if (sel && sel.value) return sel.value;
+    return card.getAttribute("data-path") || "";
+  }
+
+  function cardRetired(card) {
+    var paths = cardPaths(card);
+    for (var i = 0; i < paths.length; i++) {
+      if (retired[paths[i]]) return true;
+    }
+    return false;
+  }
+
   function dropRetired(root) {
     if (!root || !root.querySelectorAll) return;
     var nodes = root.querySelectorAll("[data-path]");
     for (var i = nodes.length - 1; i >= 0; i--) {
-      if (retired[nodes[i].getAttribute("data-path")]) removeCard(nodes[i]);
+      if (cardRetired(nodes[i])) removeCard(nodes[i]);
     }
   }
 
@@ -441,15 +503,24 @@
     setAction(message, true);
   }
 
-  function finishCard(card, kind, logPath) {
+  function finishCard(card, kind) {
     showChoice(card, kind);
     choiceNote(card, kind === "ignore" ? "Ignored" : "Adopted");
     var controls = card.querySelectorAll("button, input, select");
     for (var i = 0; i < controls.length; i++) controls[i].disabled = true;
-    retired[logPath] = true;
+    var paths = cardPaths(card);
+    for (var i = 0; i < paths.length; i++) retired[paths[i]] = true;
     setTimeout(function () {
       dropRetired(board);
     }, 900);
+  }
+
+  function postEach(url, bodies) {
+    var chain = Promise.resolve();
+    bodies.forEach(function (body) {
+      chain = chain.then(function () { return postJSON(url, body); });
+    });
+    return chain;
   }
 
   function runAction(btn) {
@@ -457,13 +528,15 @@
     var card = btn.closest("[data-path]");
     if (!card || card.classList.contains("result-adopted") || card.classList.contains("result-ignored")) return;
     var action = btn.getAttribute("data-action");
-    var logPath = card.getAttribute("data-path") || "";
-    var body = { log_path: logPath };
+    var logPath = chosenLog(card);
+    var grouped = !!card.querySelector("[data-field=logfile]");
     var url = "/api/ignore";
-    var done = "Ignored this file.";
+    var done = grouped ? "Ignored this directory." : "Ignored this file.";
+    var request;
     if (action === "unignore") {
       url = "/api/unignore";
       done = "This file can be adopted again.";
+      request = postJSON(url, { log_path: logPath });
     } else if (action === "adopt") {
       var name = field(card, "name");
       var locked = card.getAttribute("data-ip-locked") === "true";
@@ -483,20 +556,26 @@
           : "Fill in the highlighted fields before adopting.", bad);
         return;
       }
-      body = { name: name, source_ip: source, protocol: protocol, log_path: logPath };
+      var body = { name: name, source_ip: source, protocol: protocol, log_path: logPath };
       if (protocol === "tcp" && port) body.tcp_port = Number(port);
       url = "/api/adopt";
       done = "Adopted " + name + ".";
+      request = postJSON(url, body);
+    } else {
+      var paths = cardPaths(card);
+      var bodies = [];
+      for (var i = 0; i < paths.length; i++) bodies.push({ log_path: paths[i] });
+      request = postEach(url, bodies);
     }
     clearMarks(card);
     showChoice(card, action);
-    choiceNote(card, action === "ignore" ? "Ignoring this file" : action === "unignore" ? "Returning this file" : "Adopting this device");
+    choiceNote(card, action === "ignore" ? (grouped ? "Ignoring this directory" : "Ignoring this file") : action === "unignore" ? "Returning this file" : "Adopting this device");
     busy = true;
     btn.disabled = true;
     setAction("Saving…", false);
-    postJSON(url, body).then(function () {
+    request.then(function () {
       setAction(done, false);
-      finishCard(card, action, logPath);
+      finishCard(card, action);
     }).catch(function (err) {
       var message = err.message || "The inventory could not be updated.";
       showChoice(card, "error");
@@ -514,7 +593,147 @@
     }
     latestMsg = msg;
     refreshOpenList();
+    if (detail && detail.open) loadDetail(false);
   }
+
+  var kindLabel = {
+    active: "Active",
+    series: "Same series",
+    rotation: "Rotation",
+    other: "Other",
+    symlink: "Symlink",
+    directory: "Directory"
+  };
+
+  function detailLine(grid, label, value) {
+    var dt = document.createElement("dt");
+    dt.textContent = label;
+    var dd = document.createElement("dd");
+    dd.textContent = value || "—";
+    grid.appendChild(dt);
+    grid.appendChild(dd);
+  }
+
+  function renderDetail(data) {
+    if (!data || data.source_ip !== openSource) return;
+    detailTitle.textContent = data.name || "Device";
+    detailBody.replaceChildren();
+    var status = document.createElement("p");
+    var pill = document.createElement("span");
+    pill.className = "pill " + (data.status_class || "");
+    pill.textContent = data.status || "Unknown";
+    status.appendChild(pill);
+    detailBody.appendChild(status);
+    var grid = document.createElement("dl");
+    grid.className = "detail-grid";
+    detailLine(grid, "Source", data.source_ip);
+    detailLine(grid, "Reporting", data.transport);
+    detailLine(grid, "Silence limit", data.silence);
+    detailLine(grid, "Log", (data.log_label || "") + (data.log_detail ? " — " + data.log_detail : ""));
+    detailLine(grid, "Connection", data.connection);
+    detailLine(grid, "Active file", data.log_path);
+    detailLine(grid, "Last write", data.last_write);
+    detailLine(grid, "Active size", data.active);
+    detailLine(grid, "Stored logs", (data.stored || "") + (data.stored_detail ? " — " + data.stored_detail : ""));
+    detailLine(grid, "Directory", data.directory);
+    detailBody.appendChild(grid);
+    var heading = document.createElement("h3");
+    heading.textContent = "Files in this directory";
+    detailBody.appendChild(heading);
+    if (data.note) {
+      var note = document.createElement("p");
+      note.className = "note";
+      note.textContent = data.note;
+      detailBody.appendChild(note);
+    }
+    var files = data.files || [];
+    if (!files.length) {
+      var empty = document.createElement("p");
+      empty.className = "note";
+      empty.textContent = "No files in this directory.";
+      detailBody.appendChild(empty);
+    } else {
+      var table = document.createElement("table");
+      table.className = "detail-files";
+      var head = document.createElement("thead");
+      var hr = document.createElement("tr");
+      ["File", "Kind", "Size", "Last write"].forEach(function (text) {
+        var th = document.createElement("th");
+        th.scope = "col";
+        th.textContent = text;
+        hr.appendChild(th);
+      });
+      head.appendChild(hr);
+      table.appendChild(head);
+      var body = document.createElement("tbody");
+      files.forEach(function (file) {
+        var tr = document.createElement("tr");
+        [file.name, kindLabel[file.kind] || file.kind || "Other", file.size, file.when].forEach(function (text, index) {
+          var td = document.createElement("td");
+          if (index === 0) td.className = "path";
+          if (index === 1) td.className = "kind " + (file.kind || "");
+          td.textContent = text || "—";
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+      table.appendChild(body);
+      detailBody.appendChild(table);
+    }
+    var foot = document.createElement("p");
+    foot.className = "note";
+    foot.textContent = "Names and sizes only. Log contents are not read.";
+    detailBody.appendChild(foot);
+  }
+
+  function loadDetail(force) {
+    if (!detail || !detail.open || !openSource) return;
+    var now = Date.now();
+    if (!force && detailLoadedAt && now - detailLoadedAt < 5000) return;
+    detailLoadedAt = now;
+    var token = ++detailToken;
+    var ip = openSource;
+    fetch("/api/device?source_ip=" + encodeURIComponent(ip)).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw new Error((data && data.error) || "The device detail could not be loaded.");
+        return data;
+      });
+    }).then(function (data) {
+      if (token !== detailToken) return;
+      renderDetail(data);
+    }).catch(function (err) {
+      if (token !== detailToken || ip !== openSource) return;
+      detailTitle.textContent = "Device";
+      detailBody.replaceChildren();
+      var note = document.createElement("p");
+      note.className = "note bad";
+      note.textContent = err.message || "The device detail could not be loaded.";
+      detailBody.appendChild(note);
+    });
+  }
+
+  function openDetail(ip) {
+    if (!detail || !ip) return;
+    openSource = ip;
+    detailTitle.textContent = "Device";
+    detailBody.replaceChildren();
+    var note = document.createElement("p");
+    note.className = "note";
+    note.textContent = "Reading the log directory…";
+    detailBody.appendChild(note);
+    if (!detail.open) detail.showModal();
+    detailLoadedAt = 0;
+    loadDetail(true);
+  }
+
+  board.addEventListener("change", function (ev) {
+    var sel = ev.target;
+    if (!sel || sel.getAttribute("data-field") !== "logfile") return;
+    var card = sel.closest && sel.closest("[data-path]");
+    var meta = card && card.querySelector("[data-file-meta]");
+    var opt = sel.options[sel.selectedIndex];
+    if (meta && opt) meta.textContent = opt.getAttribute("data-meta") || "";
+  });
 
   board.addEventListener("input", function (ev) {
     var card = ev.target.closest && ev.target.closest("[data-path]");
@@ -523,7 +742,28 @@
     if (!card.querySelector(".invalid")) card.classList.remove("result-error");
   });
 
+  board.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    var row = ev.target && ev.target.closest && ev.target.closest("tr.row");
+    if (!row || ev.target !== row || !board.contains(row)) return;
+    ev.preventDefault();
+    openDetail(row.getAttribute("data-source"));
+  });
+
+  if (detailClose) detailClose.addEventListener("click", function () { detail.close(); });
+  if (detail) {
+    detail.addEventListener("close", function () { openSource = ""; detailToken++; detailLoadedAt = 0; });
+    detail.addEventListener("click", function (ev) {
+      if (ev.target === detail) detail.close();
+    });
+  }
+
   board.addEventListener("click", function (ev) {
+    var row = ev.target.closest && ev.target.closest("tr.row");
+    if (row && board.contains(row) && !ev.target.closest("a, button, input, select")) {
+      openDetail(row.getAttribute("data-source"));
+      return;
+    }
     var action = ev.target.closest("[data-action]");
     if (action && board.contains(action)) {
       runAction(action);

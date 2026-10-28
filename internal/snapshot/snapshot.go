@@ -31,15 +31,24 @@ type Snapshot struct {
 	Ignored               []Ignored   `json:"ignored,omitempty"`
 }
 
-// Candidate is a file in a watched directory that is not an inventory device
-// and has not been ignored. It is metadata only.
+// CandidateFile is one log convention inside a candidate directory.
+type CandidateFile struct {
+	Path        string     `json:"path"`
+	Name        string     `json:"name"`
+	LastWrite   *time.Time `json:"last_write,omitempty"`
+	ActiveBytes int64      `json:"active_bytes"`
+}
+
+// Candidate is one child directory, or one loose file, that is not an
+// inventory device and has not been ignored. It is metadata only.
 type Candidate struct {
-	LogPath       string     `json:"log_path"`
-	SourceIP      string     `json:"source_ip,omitempty"`
-	SuggestedName string     `json:"suggested_name"`
-	LastWrite     *time.Time `json:"last_write,omitempty"`
-	ActiveBytes   int64      `json:"active_bytes"`
-	Detail        string     `json:"detail"`
+	LogPath       string          `json:"log_path"`
+	LogFiles      []CandidateFile `json:"log_files,omitempty"`
+	SourceIP      string          `json:"source_ip,omitempty"`
+	SuggestedName string          `json:"suggested_name"`
+	LastWrite     *time.Time      `json:"last_write,omitempty"`
+	ActiveBytes   int64           `json:"active_bytes"`
+	Detail        string          `json:"detail"`
 }
 
 // Ignored is a source the operator chose not to track.

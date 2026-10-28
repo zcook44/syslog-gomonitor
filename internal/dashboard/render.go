@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"path"
 	"strings"
 	"time"
 
@@ -64,6 +65,7 @@ type boardModel struct {
 
 type candidateView struct {
 	Path        string
+	Dir         string
 	Source      string
 	Name        string
 	Detail      string
@@ -71,7 +73,17 @@ type candidateView struct {
 	LastDay     string
 	Active      string
 	ActiveTitle string
+	FileMeta    string
 	IPLocked    bool
+	Choose      bool
+	Files       []logFileView
+}
+
+type logFileView struct {
+	Path     string
+	Name     string
+	Meta     string
+	Selected bool
 }
 
 type ignoredView struct {
@@ -185,8 +197,10 @@ func model(snap snapshot.Snapshot) boardModel {
 	for _, item := range snap.Candidates {
 		active, activeTitle := activeView(&item.ActiveBytes)
 		lastTime, lastDay := clockParts(item.LastWrite)
+		files := logFileViews(item)
 		candidates = append(candidates, candidateView{
 			Path:        item.LogPath,
+			Dir:         path.Dir(item.LogPath),
 			Source:      item.SourceIP,
 			Name:        item.SuggestedName,
 			Detail:      item.Detail,
@@ -194,10 +208,15 @@ func model(snap snapshot.Snapshot) boardModel {
 			LastDay:     lastDay,
 			Active:      active,
 			ActiveTitle: activeTitle,
+			FileMeta:    fileMeta(lastTime, lastDay, active),
 			IPLocked:    item.SourceIP != "",
+			Choose:      len(files) > 1,
+			Files:       files,
 		})
-		revision.WriteString(item.LogPath)
-		revision.WriteByte('\n')
+		for _, file := range files {
+			revision.WriteString(file.Path)
+			revision.WriteByte('\n')
+		}
 	}
 	ignored := make([]ignoredView, 0, len(snap.Ignored))
 	for _, item := range snap.Ignored {
@@ -242,6 +261,42 @@ func label(table map[string]string, key string) string {
 		return "Unknown"
 	}
 	return key
+}
+
+func logFileViews(item snapshot.Candidate) []logFileView {
+	files := item.LogFiles
+	if len(files) == 0 && item.LogPath != "" {
+		files = []snapshot.CandidateFile{{
+			Path:        item.LogPath,
+			Name:        path.Base(item.LogPath),
+			LastWrite:   item.LastWrite,
+			ActiveBytes: item.ActiveBytes,
+		}}
+	}
+	views := make([]logFileView, len(files))
+	for i, file := range files {
+		active, _ := activeView(&file.ActiveBytes)
+		lastTime, lastDay := clockParts(file.LastWrite)
+		name := file.Name
+		if name == "" {
+			name = path.Base(file.Path)
+		}
+		views[i] = logFileView{
+			Path:     file.Path,
+			Name:     name,
+			Meta:     fileMeta(lastTime, lastDay, active),
+			Selected: file.Path == item.LogPath,
+		}
+	}
+	return views
+}
+
+func fileMeta(lastTime, lastDay, active string) string {
+	text := "Last write " + lastTime
+	if lastDay != "" {
+		text += " " + lastDay
+	}
+	return text + " · " + active
 }
 
 func activeView(n *int64) (string, string) {

@@ -17,6 +17,8 @@ import (
 	"syslog-gomonitor/internal/dashboard"
 	"syslog-gomonitor/internal/engine"
 	"syslog-gomonitor/internal/inventory"
+	"syslog-gomonitor/internal/snapshot"
+	"syslog-gomonitor/internal/storage"
 )
 
 // Listen serves the dashboard until ctx is cancelled.
@@ -53,6 +55,7 @@ func Handler(eng *engine.Engine) http.Handler {
 	h := &handler{eng: eng}
 	mux.HandleFunc("/healthz", h.health)
 	mux.HandleFunc("/api/status", h.api)
+	mux.HandleFunc("/api/device", h.device)
 	mux.HandleFunc("/events", h.events)
 	mux.HandleFunc("/", h.page)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +102,25 @@ func (h *handler) api(w http.ResponseWriter, r *http.Request) {
 	if err := enc.Encode(h.eng.Latest()); err != nil {
 		http.Error(w, "status encoding failed", http.StatusInternalServerError)
 	}
+}
+
+func (h *handler) device(w http.ResponseWriter, r *http.Request) {
+	ip := strings.TrimSpace(r.URL.Query().Get("source_ip"))
+	snap := h.eng.Latest()
+	var device snapshot.Device
+	found := false
+	for _, item := range snap.Devices {
+		if item.SourceIP == ip {
+			device = item
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeAPI(w, http.StatusNotFound, apiError("That device is not in the inventory."))
+		return
+	}
+	writeAPI(w, http.StatusOK, dashboard.Detail(device, storage.List(device.LogPath)))
 }
 
 func (h *handler) mutation(w http.ResponseWriter, r *http.Request) {

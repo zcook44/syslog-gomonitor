@@ -72,15 +72,21 @@ It publishes a snapshot. The browser receives it on `GET /events`.
 ### Discovery
 
 About every 30 seconds the engine lists each directory in `log_directories`
-and `Lstat`s new active logs. It does not run when that list is empty. A child
-directory contributes one candidate when it contains the active log
-(`syslog.log`, unless `log_path_template` names a different file after
-`{source_ip}/`). A regular file sitting directly in the watched directory is
+and `Lstat`s new logs. It does not run when that list is empty. Each child
+directory is one candidate. Every regular file ending in `.log` directly
+inside it is a choice on that card, so `syslog.log` and `messages.log` share
+one card and the operator picks which file to monitor. A calendar date in
+the filename is part of that choice: `edge-router-01-20261028-syslog.log`
+and `edge-router-01-20261029-syslog.log` are one convention. `syslog.log` is
+preselected when it is present. The address is the directory name when that
+name is an IP. A regular file sitting directly in the watched directory is
 also a candidate, unless it is a rotation (`.1`, `.gz`) or an rsyslog state
 file (`.offset`, `.state`). Symlinks are not followed. A path or source
-address already in `devices` or `ignored` is left out.
+address already in `devices` or `ignored` is left out, and so is a directory
+that already holds a device log. A later day of a dated name that is already
+tracked or ignored is left out too.
 
-The page shows at most 100 untracked files and examines at most 4096 names in
+The page shows at most 100 untracked sources and examines at most 4096 names in
 one directory. `--discover-interval 0s` checks once at startup.
 
 ### Stored size
@@ -108,8 +114,8 @@ change the file.
 
 | Loop | Default | Reads | Leaves alone |
 | --- | --- | --- | --- |
-| Activity | 5s | `Lstat` of each current log, and one `ss` call when a device uses TCP | File contents, rotations, directory walks |
-| Discovery | 30s | One listing of each log directory, then `Lstat` of a new active log | Contents, symlinks, rotations inside an address directory |
+| Activity | 5s | `Lstat` of each current log, and one `ss` call when a device uses TCP. A dated name lists that directory and stats the newest day | File contents, rotations, recursive walks |
+| Discovery | 30s | One listing of each log directory, then `Lstat` of each new `*.log` file | Contents, symlinks, rotations inside an address directory |
 | Stored size | 1h | One listing per log directory, then `Lstat` of the active file and rotations | Decompressing archives, following symlinks, reading bytes |
 
 ## How one device becomes a row
