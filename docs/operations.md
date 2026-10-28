@@ -151,6 +151,12 @@ journalctl -u syslog-gomonitor.service -n 50 --no-pager
 curl --fail --cacert /path/to/root.pem https://127.0.0.1:8443/healthz
 ```
 
+An install that used `--http` answers on loopback without TLS:
+
+```bash
+curl --fail http://127.0.0.1:8080/healthz
+```
+
 The journal records startup, each hourly measurement, an inventory reload, an
 adopt or ignore, and a measurement that could not be saved. It does not
 record every 5-second poll or every discovery pass.

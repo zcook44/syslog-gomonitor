@@ -167,7 +167,7 @@ the snapshot. Adopt, ignore, and stop ignoring are the actions that rewrite
 
 ## What crosses the HTTP boundary
 
-The installed listener is HTTPS on port 8443 on every interface. `serve` without a certificate stays on HTTP. The lab publishes HTTPS on the host's port 8443.
+The installed listener is HTTPS on port 8443 on every interface. `install.sh --http`, or a package built with `./release/build.sh --http`, listens on `127.0.0.1:8080` without TLS. `serve` without a certificate stays on HTTP. The lab publishes HTTPS on the host's port 8443.
 
 | Request | Direction | Payload |
 | --- | --- | --- |

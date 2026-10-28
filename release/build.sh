@@ -2,7 +2,30 @@
 # Build a self-contained linux/amd64 package for a server with no internet.
 # Run this on a machine that has Go 1.22 or newer. The syslog server does not
 # need Go, and the tarball does not download anything when it is installed.
+#
+# The package defaults to HTTPS on port 8443. Pass --http to pack the loopback
+# HTTP unit (127.0.0.1:8080) as the unit install.sh uses when it is not given
+# a certificate. install.sh can still choose the other mode.
 set -euo pipefail
+
+dashboard="https"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --http) dashboard="http"; shift ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: build.sh [--http]
+
+Build the offline linux/amd64 tarball in this directory.
+
+  --http   Pack HTTP on 127.0.0.1:8080 as the default dashboard.
+           The default is HTTPS on port 8443.
+EOF
+      exit 0
+      ;;
+    *) echo "build.sh: unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
 
 release_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$release_dir/.." && pwd)"
@@ -34,12 +57,19 @@ cp "$release_dir/install.sh" "$pkg/install.sh"
 cp "$release_dir/VERSION" "$pkg/VERSION"
 cp "$root/devices.example.json" "$pkg/config/devices.example.json"
 cp "$root/examples/rsyslog-per-device.conf" "$pkg/examples/rsyslog-per-device.conf"
-cp "$root/deploy/syslog-gomonitor.service" "$pkg/systemd/syslog-gomonitor.service"
+cp "$root/deploy/syslog-gomonitor.service" "$pkg/systemd/syslog-gomonitor.https.service"
+cp "$root/deploy/syslog-gomonitor.http.service" "$pkg/systemd/syslog-gomonitor.http.service"
+if [[ "$dashboard" == "http" ]]; then
+  cp "$root/deploy/syslog-gomonitor.http.service" "$pkg/systemd/syslog-gomonitor.service"
+else
+  cp "$root/deploy/syslog-gomonitor.service" "$pkg/systemd/syslog-gomonitor.service"
+fi
+printf '%s\n' "$dashboard" > "$pkg/DASHBOARD"
 cp "$root/deploy/syslog-gomonitor-size.service" "$pkg/systemd/syslog-gomonitor-size.service"
 cp "$root/deploy/syslog-gomonitor-size.timer" "$pkg/systemd/syslog-gomonitor-size.timer"
 cp "$root/docs/"*.md "$pkg/doc/"
 chmod 0755 "$pkg/install.sh" "$pkg/bin/syslog-gomonitor"
-chmod 0644 "$pkg/VERSION" "$pkg/config/devices.example.json" \
+chmod 0644 "$pkg/VERSION" "$pkg/DASHBOARD" "$pkg/config/devices.example.json" \
   "$pkg/examples/rsyslog-per-device.conf" "$pkg/systemd/"* "$pkg/doc/"*
 
 (
@@ -54,6 +84,7 @@ tar -C "$stage" -czf "$release_dir/$name.tar.gz" "$name"
   sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
 )
 
+echo "dashboard: $dashboard"
 echo "package: $release_dir/$name.tar.gz"
 cat "$release_dir/$name.tar.gz.sha256"
 file "$pkg/bin/syslog-gomonitor"

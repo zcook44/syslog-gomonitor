@@ -285,8 +285,15 @@ sudo ./install.sh --log-dir /var/log/remote \
   --tls-key /etc/pki/tls/private/syslog.key
 ```
 
-On a terminal, `sudo ./install.sh` asks for each directory and for the
-certificate chain and key. The directories are stored in
+HTTP on the syslog server only, with no certificate:
+
+```bash
+sudo ./install.sh --http --log-dir /var/log/remote
+```
+
+`./release/build.sh --http` packs that HTTP unit as the default. On a
+terminal, `sudo ./install.sh` asks for each directory and whether to use
+HTTPS. The directories are stored in
 `/etc/syslog-gomonitor/devices.json` as `log_directories`. The certificate
 paths are symlinked under `/etc/syslog-gomonitor/tls/` and are not copied.
 
