@@ -25,7 +25,10 @@ services:
       lab:
         ipv4_address: 10.188.0.2
     ports:
-      - "127.0.0.1:18080:8080"
+      - "8443:8443"
+    volumes:
+      - ./tls/out/fullchain.pem:/etc/syslog-gomonitor/tls/fullchain.pem:ro
+      - ./tls/out/privkey.pem:/etc/syslog-gomonitor/tls/privkey.pem:ro
     restart: unless-stopped
 
   edge-router-01:

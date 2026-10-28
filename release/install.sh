@@ -9,18 +9,27 @@ no_start=0
 do_uninstall=0
 purge=0
 log_dirs=()
+tls_cert=""
+tls_key=""
 
 usage() {
   cat <<'EOF'
-Usage: install.sh [--log-dir PATH]... [--no-start] [--uninstall] [--purge] [--destdir DIR]
+Usage: install.sh [--log-dir PATH]... [--tls-cert FILE] [--tls-key FILE] [--no-start] [--uninstall] [--purge] [--destdir DIR]
 
 Install the files in this directory onto a syslog server. Run as root.
 The script asks for the syslog directories to watch and saves them in
 devices.json. Edit log_directories in that file to change them later.
 Device entries already in the inventory are kept.
 
+The installed service serves HTTPS on port 8443 on every interface, so
+admins can open the dashboard from their workstations. The certificate
+must name the host they type in the browser.
+
   --log-dir    Absolute syslog directory to watch. Repeat for each directory.
                Without this flag, an interactive install asks for the paths.
+  --tls-cert   PEM chain for the dashboard: server certificate, then intermediates.
+  --tls-key    Private key that matches that server certificate.
+               Without these flags, an interactive install asks for the paths.
   --no-start   Install files and reload systemd, but do not enable or start
   --uninstall  Stop the service and remove the program and units
   --purge      With --uninstall, also remove the inventory and size snapshot
@@ -33,6 +42,16 @@ while [[ $# -gt 0 ]]; do
     --log-dir)
       [[ $# -ge 2 ]] || { echo "install.sh: --log-dir needs a directory" >&2; exit 2; }
       log_dirs+=("$2")
+      shift 2
+      ;;
+    --tls-cert)
+      [[ $# -ge 2 ]] || { echo "install.sh: --tls-cert needs a file" >&2; exit 2; }
+      tls_cert="$2"
+      shift 2
+      ;;
+    --tls-key)
+      [[ $# -ge 2 ]] || { echo "install.sh: --tls-key needs a file" >&2; exit 2; }
+      tls_key="$2"
       shift 2
       ;;
     --no-start) no_start=1; shift ;;
@@ -196,6 +215,52 @@ if ! "$bin_path" validate --config "$config_path"; then
   exit 1
 fi
 
+collect_tls() {
+  if [[ -n "$tls_cert" || -n "$tls_key" ]]; then
+    return
+  fi
+  if [[ -n "$destdir" || ! -t 0 ]]; then
+    return
+  fi
+  echo "HTTPS uses this server's existing certificate."
+  echo "The chain file lists the server certificate first, then intermediates."
+  echo "The name admins type in the browser must be on that certificate."
+  read -r -p "Certificate chain path: " tls_cert || tls_cert=""
+  read -r -p "Private key path: " tls_key || tls_key=""
+}
+
+link_tls() {
+  if [[ "$tls_cert" != /* || "$tls_key" != /* ]]; then
+    echo "install.sh: TLS certificate and key paths must be absolute" >&2
+    exit 1
+  fi
+  if [[ ! -f "$tls_cert" || ! -f "$tls_key" ]]; then
+    echo "install.sh: TLS certificate or private key was not found" >&2
+    exit 1
+  fi
+  local dest="$destdir/etc/syslog-gomonitor/tls"
+  install "${owner[@]}" -d -m 0750 "$dest"
+  ln -sfn "$tls_cert" "$dest/fullchain.pem"
+  ln -sfn "$tls_key" "$dest/privkey.pem"
+  if [[ -z "$destdir" ]]; then
+    "$bin_path" validate-tls --tls-cert "$dest/fullchain.pem" --tls-key "$dest/privkey.pem"
+  fi
+}
+
+collect_tls
+if [[ -n "$tls_cert" || -n "$tls_key" ]]; then
+  if [[ -z "$tls_cert" || -z "$tls_key" ]]; then
+    echo "install.sh: --tls-cert and --tls-key must both be set" >&2
+    exit 1
+  fi
+  link_tls
+fi
+if [[ -z "$destdir" && -z "$tls_cert" ]]; then
+  echo "install.sh: the dashboard is HTTPS and needs the server certificate chain and private key." >&2
+  echo "Re-run with --tls-cert and --tls-key, or answer the prompts on a terminal." >&2
+  exit 1
+fi
+
 if [[ -n "$destdir" ]]; then
   echo "Laid out syslog-gomonitor $version under $destdir"
   echo "Inventory: $config_path"
@@ -206,17 +271,22 @@ systemctl daemon-reload
 if [[ "$no_start" -eq 1 ]]; then
   echo "Installed syslog-gomonitor $version without starting it."
 else
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "install.sh: openssl is required to check the HTTPS dashboard" >&2
+    exit 1
+  fi
   systemctl enable syslog-gomonitor.service
   systemctl restart syslog-gomonitor.service
   sleep 1
-  if ! timeout 5 bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /healthz HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n" >&3 && grep -q "ok" <&3'; then
-    echo "install.sh: service did not answer on 127.0.0.1:8080" >&2
+  if ! printf 'GET /healthz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n' | timeout 5 openssl s_client -connect 127.0.0.1:8443 -servername localhost -ign_eof -quiet 2>/dev/null | grep -q '200 OK'; then
+    echo "install.sh: service did not answer HTTPS on port 8443" >&2
     systemctl --no-pager --full status syslog-gomonitor.service >&2 || true
     journalctl -u syslog-gomonitor.service -n 40 --no-pager >&2 || true
     exit 1
   fi
   echo "syslog-gomonitor $version is running."
-  echo "Dashboard: http://127.0.0.1:8080/"
+  echo "Dashboard: https://<this-host>:8443/"
+  echo "The name in the browser must match the server certificate. Workstations must trust the CA that issued it."
 fi
 
 echo "Inventory: $config_path"

@@ -12,8 +12,13 @@ every few seconds. The total size of each device's stored logs, including
 rotated files, is measured on a separate hourly pass so that walk does not run
 on the fast loop.
 
-The page listens on `127.0.0.1:8080` unless you choose another address. For a
-disposable fleet that shows every status, use the demo below.
+The installed service serves HTTPS on port 8443 on every interface, using this
+server's certificate, so admins can open the dashboard from their workstations.
+The name in the browser must be on that certificate, and the workstation must
+trust the CA that issued it. `serve` without `--tls-cert` stays on HTTP, which
+is what the single-process demo uses. The page has no login, so limit TCP 8443
+to the admin network. For a disposable fleet that shows every status, use the
+demo below.
 
 Operator documentation, including data flow and dark-site install, is in
 [docs/](docs/README.md). Build the offline package with `./release/build.sh`.
@@ -129,8 +134,9 @@ offered. Discovery does not read log contents and does not follow symlinks.
 
 The container lab is the place to try monitor changes. It runs rsyslog plus
 this source tree, and example containers send syslog at that collector. Open
-<http://127.0.0.1:18080/>. Directions, the fourteen example rows, and the
-untracked dated-log cards are in [lab/README.md](lab/README.md).
+<https://127.0.0.1:8443/> on this machine, and `https://<this-host>:8443/` from
+another workstation. Directions, the certificate, the fourteen example rows,
+and the untracked dated-log cards are in [lab/README.md](lab/README.md).
 
 ```bash
 docker compose -f lab/compose.yaml up -d --build
@@ -180,7 +186,7 @@ Open <http://127.0.0.1:18082/>. Stop it with
 
 ```bash
 go run ./cmd/syslog-gomonitor validate --config ./devices.json
-go run ./cmd/syslog-gomonitor serve --config ./devices.json --state ./sizes.json --listen 127.0.0.1:8080
+go run ./cmd/syslog-gomonitor serve --config ./devices.json --state ./sizes.json --listen 0.0.0.0:8443 --tls-cert /etc/syslog-gomonitor/tls/fullchain.pem --tls-key /etc/syslog-gomonitor/tls/privkey.pem
 ```
 
 Other commands:
@@ -203,8 +209,8 @@ writes the snapshot, and prints a short report.
 Viewing from another machine, without opening the port:
 
 ```bash
-ssh -L 8080:127.0.0.1:8080 your-user@your-syslog-server
-# Browse http://127.0.0.1:8080/
+# From an admin workstation, open https://syslog-server.example:8443/
+# The certificate must include that name, and the workstation must trust the CA.
 ```
 
 The page shows device names, addresses, and log paths. Keep the listener on
@@ -240,6 +246,7 @@ Install these from local media before running `install.sh`.
 | `grep` | `grep` | The install health check looks for `ok` in the HTTP response. |
 | `tar` and `gzip` | `tar`, `gzip` | Unpacking the release tarball. |
 | `ss` | `iproute` | Classifying TCP devices. The process runs `ss -H -t -n state established`. Without `ss`, UDP rows still update and every TCP connection is **Unknown**, not disconnected. |
+| `openssl` | `openssl` | The install script checks the HTTPS handshake. The running service does not shell out to it. |
 
 `curl` is not required. It is a convenient way to read `/healthz` after install.
 
@@ -251,7 +258,7 @@ These are not extra packages. The service will not report devices correctly with
 - One regular log file per source, inside a directory listed in `log_directories`. A shared log file cannot show which device wrote last. The optional example is [`examples/rsyslog-per-device.conf`](examples/rsyslog-per-device.conf).
 - Read permission on those files and on their parent directories. The packaged unit runs as root and keeps only `CAP_DAC_READ_SEARCH`, which is what lets it stat root-owned logs.
 - Write permission on `/var/lib/syslog-gomonitor` and on `/etc/syslog-gomonitor`. The size snapshot lives in the first. Adopt and ignore replace `devices.json` in the second. The rest of the filesystem is read-only for the service.
-- `127.0.0.1:8080` free. The unit binds only that address. View it from another machine with an SSH tunnel rather than by publishing the port.
+- TCP 8443 free on this host. The unit serves HTTPS on every interface. The certificate chain is the host PKI: server certificate first, then intermediates, with the matching private key. `install.sh` symlinks those files to `/etc/syslog-gomonitor/tls/fullchain.pem` and `privkey.pem`. The browser name must be one of the certificate's names. The private key must not be readable by other users. The process re-reads the chain and key for each new connection. There is no login on the page, so the firewall should allow 8443 only from the admin network.
 - A JSON inventory at `/etc/syslog-gomonitor/devices.json`. `install.sh` creates one from the directories you enter. Device names, source IPs, and log paths must be unique.
 - Disk for the per-source files and their rotations. Stored size is the current on-disk total, measured about once an hour.
 - A clock within about a minute of true time. A modification time more than 60 seconds in the future is reported as **Unknown**.
@@ -273,12 +280,15 @@ including the directory prompt and upgrades, are in
 sha256sum -c syslog-gomonitor-1.1.0-linux-amd64.tar.gz.sha256
 tar -xzf syslog-gomonitor-1.1.0-linux-amd64.tar.gz
 cd syslog-gomonitor-1.1.0-linux-amd64
-sudo ./install.sh --log-dir /var/log/remote
+sudo ./install.sh --log-dir /var/log/remote \
+  --tls-cert /etc/pki/tls/certs/syslog.fullchain.pem \
+  --tls-key /etc/pki/tls/private/syslog.key
 ```
 
-On a terminal, `sudo ./install.sh` asks for each directory instead of
-requiring `--log-dir`. The answers are stored in
-`/etc/syslog-gomonitor/devices.json` as `log_directories`.
+On a terminal, `sudo ./install.sh` asks for each directory and for the
+certificate chain and key. The directories are stored in
+`/etc/syslog-gomonitor/devices.json` as `log_directories`. The certificate
+paths are symlinked under `/etc/syslog-gomonitor/tls/` and are not copied.
 
 The service runs as root so it can stat root-owned logs, binds only to
 loopback, and can write its size snapshot under `/var/lib/syslog-gomonitor`.

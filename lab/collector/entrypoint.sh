@@ -119,6 +119,8 @@ trap - EXIT
 exec /usr/local/bin/syslog-gomonitor serve \
   --config /etc/syslog-gomonitor/devices.json \
   --state /var/lib/syslog-gomonitor/sizes.json \
-  --listen 0.0.0.0:8080 \
+  --listen 0.0.0.0:8443 \
+  --tls-cert /etc/syslog-gomonitor/tls/fullchain.pem \
+  --tls-key /etc/syslog-gomonitor/tls/privkey.pem \
   --poll 2s \
   --size-interval 1h

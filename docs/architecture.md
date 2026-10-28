@@ -20,7 +20,7 @@ flowchart LR
     inventory["devices.json: devices and log_directories"]
     monitor[syslog-gomonitor]
     sizes["/var/lib/syslog-gomonitor/sizes.json"]
-    page["Dashboard 127.0.0.1:8080"]
+    page["HTTPS dashboard :8443"]
   end
   router -->|UDP or TCP syslog| rsyslog
   switch -->|UDP or TCP syslog| rsyslog
@@ -165,7 +165,7 @@ deletes that array entry.
 
 ## HTTP surface
 
-The listener defaults to `127.0.0.1:8080`. Nothing else is bound.
+The installed listener is HTTPS on `0.0.0.0:8443`, using the host certificate chain. `serve` without `--tls-cert` and `--tls-key` stays on HTTP, which is what the single-process demo uses. The lab publishes that same HTTPS listener on the host. There is no login, so the host firewall should admit port 8443 only from the admin network.
 
 | Method and path | Response |
 | --- | --- |

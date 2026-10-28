@@ -27,6 +27,6 @@ source can also be ignored so it is not offered again.
 
 The development tree also has a short [project README](../README.md). The
 [lab](../lab/README.md) is the container test bed for later releases: rsyslog,
-example senders, and the dashboard on `http://127.0.0.1:18080/`.
+example senders, and an HTTPS dashboard on port 8443.
 `go run ./cmd/syslog-gomonitor demo` is a smaller preview without rsyslog.
 Production uses the package described in the install document.

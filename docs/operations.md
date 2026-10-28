@@ -19,7 +19,9 @@ The installed binary is `/usr/local/bin/syslog-gomonitor`.
 | --- | --- | --- |
 | `--config` | `/etc/syslog-gomonitor/devices.json` | Inventory |
 | `--state` | `/var/lib/syslog-gomonitor/sizes.json` | Hourly size snapshot |
-| `--listen` | `127.0.0.1:8080` | `host:port` |
+| `--listen` | `127.0.0.1:8080` | `host:port`. The installed unit uses `0.0.0.0:8443`. |
+| `--tls-cert` | none | PEM chain: server certificate, then intermediates. With `--tls-key`, the listener is HTTPS. |
+| `--tls-key` | none | Private key for that server certificate. Other users must not be able to read it. |
 | `--poll` | `5s` | Activity check interval. Minimum `200ms`. |
 | `--size-interval` | `1h` | Stored-size interval. `0s` reads the snapshot and does not scan. |
 | `--discover-interval` | `30s` | How often to look for files in `log_directories` that are not in the inventory. `0s` does that once at startup. |
@@ -146,7 +148,7 @@ Service health:
 ```bash
 systemctl status syslog-gomonitor.service
 journalctl -u syslog-gomonitor.service -n 50 --no-pager
-curl --fail http://127.0.0.1:8080/healthz
+curl --fail --cacert /path/to/root.pem https://127.0.0.1:8443/healthz
 ```
 
 The journal records startup, each hourly measurement, an inventory reload, an
@@ -187,7 +189,8 @@ from the working tree. More than ten example containers send syslog, and the
 collector pins a few files so the page also shows missing, stale, empty,
 symlink, and future-mtime rows. It also writes untracked dated logs so **Not
 in inventory** has adoption cards for `name-date-syslog.log`. The dashboard
-is at `http://127.0.0.1:18080/`.
+is HTTPS on port 8443, published on the host's addresses. Trust
+`lab/tls/out/ca.pem` before opening it.
 
 ```bash
 docker compose -f lab/compose.yaml up -d --build

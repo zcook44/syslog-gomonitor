@@ -69,12 +69,13 @@ What that does:
 5. Copies `devices.example.json` to `/etc/syslog-gomonitor/devices.example.json`.
 6. Asks for the syslog directories to watch, or uses each `--log-dir`. A new inventory is created with those directories and example devices. An existing inventory keeps its devices and updates `log_directories`. Without a terminal or `--log-dir`, a new inventory uses `/var/log/remote`.
 7. Runs `syslog-gomonitor validate`. A directory list that leaves a device file outside those directories is not written, and the service is left unstarted.
-8. Reloads systemd, enables `syslog-gomonitor.service`, and restarts it.
-9. Checks that `127.0.0.1:8080/healthz` answers `ok`.
+8. Links the host certificate chain and private key under `/etc/syslog-gomonitor/tls/` and checks that the server certificate is first in the chain.
+9. Reloads systemd, enables `syslog-gomonitor.service`, and restarts it.
+10. Checks that `https://127.0.0.1:8443/healthz` answers over TLS.
 
 `--no-start` stops after the files and `daemon-reload`.
 
-The service listens on `127.0.0.1:8080` and runs as root so it can stat
+The service listens on port 8443 with HTTPS on every interface and runs as root so it can stat
 root-owned logs. It may write its size snapshot under
 `/var/lib/syslog-gomonitor`, which systemd creates, and it may replace
 `/etc/syslog-gomonitor/devices.json` when an operator adopts or ignores a
@@ -119,19 +120,15 @@ The service reloads a valid file on the next poll, within about 5 seconds.
 Confirm the page:
 
 ```bash
-curl --fail http://127.0.0.1:8080/healthz
-curl --fail http://127.0.0.1:8080/api/status
+curl --fail --cacert /path/to/root.pem https://127.0.0.1:8443/healthz
+curl --fail --cacert /path/to/root.pem https://127.0.0.1:8443/api/status
 ```
 
-From a workstation, without opening the port:
-
-```bash
-ssh -L 8080:127.0.0.1:8080 your-user@your-syslog-server
-```
-
-Then open `http://127.0.0.1:8080/`. The page shows device names, addresses,
-and log paths. Leave the listener on loopback unless the host already has
-access control in front of it.
+From an admin workstation, open `https://<syslog-server>:8443/`. The name in
+that address must be on the server certificate, and the workstation must trust
+the CA that issued it. The page has no login, so allow TCP 8443 only from the
+admin network. The page shows device names, addresses,
+and log paths.
 
 A file that arrives under a watched directory can be adopted or ignored from
 that page. A child directory is one card, and a date in the filename stays
