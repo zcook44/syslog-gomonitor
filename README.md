@@ -332,3 +332,27 @@ devices or change a syslog service.
 | `internal/dashboard` | HTML status page |
 | `internal/server` | Loopback HTTP server and live updates |
 | `internal/demo` | Example fleet used by `syslog-gomonitor demo` |
+
+## TODO: disconnected deployment notes
+
+Open items found during the first air-gapped end-to-end deploy.
+
+### Install / packaging
+
+- [ ] Add a script to generate and configure a server certificate for production deployments. Currently `lab/tls/generate.go` generates self-signed certificates for lab/dev use only. `install.sh` supports `--tls-cert` and `--tls-key` to link existing certificates to `/etc/syslog-gomonitor/tls/{fullchain,privkey}.pem`, and `validate-tls` checks the chain, but there is no production script to generate a self-signed certificate or CSR for submission to an internal CA, set proper file permissions (key must be mode 0600), and configure the paths for the systemd service.
+
+### Configuration
+
+- [ ] ...
+
+### Usage / workflow
+
+- [ ] ...
+
+### Docs fixes
+
+- [ ] ...
+
+### Bugs / follow-ups
+
+- [ ] ...
