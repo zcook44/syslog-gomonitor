@@ -54,6 +54,7 @@ if ! file "$pkg/bin/syslog-gomonitor" | grep -q 'statically linked'; then
 fi
 
 cp "$release_dir/install.sh" "$pkg/install.sh"
+cp "$release_dir/generate-cert.sh" "$pkg/generate-cert.sh"
 cp "$release_dir/VERSION" "$pkg/VERSION"
 cp "$root/devices.example.json" "$pkg/config/devices.example.json"
 cp "$root/examples/rsyslog-per-device.conf" "$pkg/examples/rsyslog-per-device.conf"
@@ -68,7 +69,7 @@ printf '%s\n' "$dashboard" > "$pkg/DASHBOARD"
 cp "$root/deploy/syslog-gomonitor-size.service" "$pkg/systemd/syslog-gomonitor-size.service"
 cp "$root/deploy/syslog-gomonitor-size.timer" "$pkg/systemd/syslog-gomonitor-size.timer"
 cp "$root/docs/"*.md "$pkg/doc/"
-chmod 0755 "$pkg/install.sh" "$pkg/bin/syslog-gomonitor"
+chmod 0755 "$pkg/install.sh" "$pkg/generate-cert.sh" "$pkg/bin/syslog-gomonitor"
 chmod 0644 "$pkg/VERSION" "$pkg/DASHBOARD" "$pkg/config/devices.example.json" \
   "$pkg/examples/rsyslog-per-device.conf" "$pkg/systemd/"* "$pkg/doc/"*
 

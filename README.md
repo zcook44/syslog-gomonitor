@@ -332,3 +332,27 @@ devices or change a syslog service.
 | `internal/dashboard` | HTML status page |
 | `internal/server` | Loopback HTTP server and live updates |
 | `internal/demo` | Example fleet used by `syslog-gomonitor demo` |
+
+## TODO: disconnected deployment notes
+
+Open items found during the first air-gapped end-to-end deploy.
+
+### Install / packaging
+
+- [x] Add a script to generate and configure a server certificate for production deployments. `release/generate-cert.sh` creates self-signed certificates or CSRs for internal CAs, sets proper permissions (key mode 0600), and optionally deploys to `/etc/syslog-gomonitor/tls/`. See `docs/install.md` section 2 for usage. The script is included in the release tarball.
+
+### Configuration
+
+- [ ] ...
+
+### Usage / workflow
+
+- [ ] ...
+
+### Docs fixes
+
+- [ ] ...
+
+### Bugs / follow-ups
+
+- [ ] ...
