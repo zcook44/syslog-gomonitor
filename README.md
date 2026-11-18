@@ -339,7 +339,7 @@ Open items found during the first air-gapped end-to-end deploy.
 
 ### Install / packaging
 
-- [ ] Add a script to generate and configure a server certificate for production deployments. Currently `lab/tls/generate.go` generates self-signed certificates for lab/dev use only. `install.sh` supports `--tls-cert` and `--tls-key` to link existing certificates to `/etc/syslog-gomonitor/tls/{fullchain,privkey}.pem`, and `validate-tls` checks the chain, but there is no production script to generate a self-signed certificate or CSR for submission to an internal CA, set proper file permissions (key must be mode 0600), and configure the paths for the systemd service.
+- [x] Add a script to generate and configure a server certificate for production deployments. `release/generate-cert.sh` creates self-signed certificates or CSRs for internal CAs, sets proper permissions (key mode 0600), and optionally deploys to `/etc/syslog-gomonitor/tls/`. See `docs/install.md` section 2 for usage. The script is included in the release tarball.
 
 ### Configuration
 

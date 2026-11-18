@@ -46,7 +46,80 @@ cd release
 sha256sum -c syslog-gomonitor-1.2.0-linux-amd64.tar.gz.sha256
 ```
 
-## 2. Move it to the syslog server
+## 2. Generate a TLS certificate (HTTPS deployments)
+
+HTTPS deployments require a server certificate and private key. The unpacked
+release includes `generate-cert.sh` to create certificates for air-gapped
+networks.
+
+### Self-signed certificate
+
+Generate a certificate with auto-detected hostnames and IP addresses:
+
+```bash
+cd syslog-gomonitor-1.2.0-linux-amd64
+sudo ./generate-cert.sh --self-signed --deploy
+```
+
+The `--deploy` flag installs the certificate to `/etc/syslog-gomonitor/tls/`,
+where `install.sh` expects it. Without `--deploy`, specify the output paths
+with `-o` and pass them to `install.sh` using `--tls-cert` and `--tls-key`.
+
+Custom Subject Alternative Names (for specific hostnames or IPs):
+
+```bash
+sudo ./generate-cert.sh --self-signed --deploy \
+  --cn syslog.example.internal \
+  --san syslog.example.internal \
+  --san 192.0.2.10
+```
+
+Workstations must trust the self-signed certificate. Import the generated
+`cert.pem` into browser or system trust stores.
+
+### Certificate Signing Request for internal CA
+
+For environments with an internal Certificate Authority:
+
+```bash
+./generate-cert.sh --csr -o /tmp/syslog-csr \
+  --cn syslog.example.internal \
+  --san syslog.example.internal \
+  --san 192.0.2.10
+```
+
+Submit `/tmp/syslog-csr/csr.pem` to your CA. After receiving the signed
+certificate (and any intermediates), create the fullchain:
+
+```bash
+cat signed-cert.pem intermediate.pem > fullchain.pem
+sudo install -m 0644 fullchain.pem /etc/syslog-gomonitor/tls/fullchain.pem
+sudo install -m 0600 /tmp/syslog-csr/privkey.pem /etc/syslog-gomonitor/tls/privkey.pem
+```
+
+### Using existing certificates
+
+If you already have a certificate for this host, symlink it:
+
+```bash
+sudo mkdir -p /etc/syslog-gomonitor/tls
+sudo ln -s /etc/pki/tls/certs/syslog.fullchain.pem /etc/syslog-gomonitor/tls/fullchain.pem
+sudo ln -s /etc/pki/tls/private/syslog.key /etc/syslog-gomonitor/tls/privkey.pem
+```
+
+The certificate chain must list the server certificate first, then any
+intermediates. The private key must be mode 0600 (not readable by other users).
+Run `validate-tls` to check:
+
+```bash
+./bin/syslog-gomonitor validate-tls \
+  --tls-cert /etc/syslog-gomonitor/tls/fullchain.pem \
+  --tls-key /etc/syslog-gomonitor/tls/privkey.pem
+```
+
+See `./generate-cert.sh --help` for all options.
+
+## 3. Move it to the syslog server
 
 Copy the `.tar.gz` and the `.sha256` file by the site's approved offline
 method. On the server:
@@ -61,7 +134,7 @@ sha256sum -c SHA256SUMS
 `SHA256SUMS` inside the archive covers `bin/syslog-gomonitor`. `install.sh`
 checks it again before copying.
 
-## 3. Install
+## 4. Install
 
 Edit the inventory first if you already know the sources. You can also let
 the script install the example and edit it afterwards.
@@ -118,7 +191,7 @@ sudo restorecon -RF \
   /usr/local/share/doc/syslog-gomonitor
 ```
 
-## 4. Point it at real devices
+## 5. Point it at real devices
 
 The watched directories are `log_directories` in the inventory. Change them
 there, or run the installer again and answer the prompt. Repeat `--log-dir`
